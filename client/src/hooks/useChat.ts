@@ -33,8 +33,11 @@ export function useChat() {
         const agentMsgId = useSessionStore.getState().appendAgentMessageStart();
         let firstTokenReceived = false;
 
+        const sessionId = useSessionStore.getState().sessionId;
+
         await consumeStream(
             apiMessages,
+            sessionId,
             (delta) => {
                 if (!firstTokenReceived) {
                     useSessionStore.getState().setPhase('responding');
@@ -42,8 +45,13 @@ export function useChat() {
                 }
                 useSessionStore.getState().appendAgentDelta(agentMsgId, delta);
             },
-            (usage) => {
+            (usage, returnedSessionId) => {
                 useSessionStore.getState().finaliseAgentMessage(agentMsgId);
+
+                // Store sessionId from server
+                if (returnedSessionId) {
+                    useSessionStore.getState().setSessionId(returnedSessionId);
+                }
 
                 if (usage) {
                     const totalTokens = usage.input_tokens + usage.output_tokens;
@@ -56,6 +64,10 @@ export function useChat() {
             },
             (msg) => {
                 useSessionStore.getState().setAgentError(agentMsgId, msg);
+            },
+            (sid) => {
+                // Handle session event
+                useSessionStore.getState().setSessionId(sid);
             }
         );
     };

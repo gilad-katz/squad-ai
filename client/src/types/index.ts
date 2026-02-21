@@ -6,12 +6,28 @@ export interface TransparencyData {
     assumptions: string;
 }
 
+export type FileActionType = 'created' | 'edited' | 'deleted';
+
+export interface FileAction {
+    id: string;
+    filename: string;       // e.g. "Button.tsx"
+    filepath: string;       // e.g. "src/components/Button.tsx"
+    language: string;       // e.g. "typescriptreact"
+    action: FileActionType;
+    content: string;        // full file content (created/edited)
+    diff?: string;          // unified diff (edited only)
+    linesAdded: number;
+    linesRemoved: number;
+    warnings?: number;      // lint warning count (placeholder)
+}
+
 export interface Message {
     id: string;
     role: 'user' | 'assistant';
-    content: string;                 // raw (may contain TRANSPARENCY block)
-    displayContent: string;          // stripped of TRANSPARENCY block
+    content: string;                 // raw (may contain TRANSPARENCY / FILE_ACTIONS blocks)
+    displayContent: string;          // stripped of structured blocks
     transparency: TransparencyData | null;
+    fileActions: FileAction[];
     status: 'complete' | 'streaming' | 'error';
     timestamp: number;
 }

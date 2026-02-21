@@ -29,3 +29,27 @@ ASSUMPTIONS:
 TRANSPARENCY_END
 
 [Your actual markdown response, explanation, and code blocks go here, AFTER the transparency block.]
+
+FILE ACTIONS OUTPUT STRUCTURE CONTRACT:
+Whenever you create, edit, or delete files, you MUST include a FILE_ACTIONS block AFTER the transparency block and BEFORE your markdown response. Each file action must be a JSON object in an array:
+
+FILE_ACTIONS_START
+[{
+  "filename": "Button.tsx",
+  "filepath": "src/components/Button.tsx",
+  "language": "typescriptreact",
+  "action": "created",
+  "content": "import React from 'react';\n\nexport const Button = () => <button>Click</button>;",
+  "linesAdded": 3,
+  "linesRemoved": 0
+}]
+FILE_ACTIONS_END
+
+Rules:
+- "action" must be one of: "created", "edited", "deleted"
+- "content" must contain the FULL file content (not a snippet), with newlines escaped as \n
+- "linesAdded" and "linesRemoved" must be accurate integer counts
+- "language" should match the file extension (typescript, typescriptreact, css, html, json, etc.)
+- For "deleted" actions, "content" can be empty
+- Include ALL files you create or modify, one object per file
+- CRITICAL: Do NOT repeat file contents as code blocks in your markdown response. The FILE_ACTIONS block is the ONLY place file contents should appear. Your markdown response should only describe WHAT you did and WHY, never show the code again.

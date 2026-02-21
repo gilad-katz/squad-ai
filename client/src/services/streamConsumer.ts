@@ -2,15 +2,17 @@ import type { Message } from '../types';
 
 export async function consumeStream(
     messages: Pick<Message, 'role' | 'content'>[],
+    sessionId: string | null,
     onDelta: (text: string) => void,
-    onDone: (usage?: { input_tokens: number, output_tokens: number }) => void,
-    onError: (msg: string) => void
+    onDone: (usage?: { input_tokens: number, output_tokens: number }, sessionId?: string) => void,
+    onError: (msg: string) => void,
+    onSessionId?: (id: string) => void
 ): Promise<void> {
     try {
         const response = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messages }),
+            body: JSON.stringify({ messages, sessionId }),
         });
 
         if (!response.ok || !response.body) {
@@ -37,8 +39,9 @@ export async function consumeStream(
 
                     const evt = JSON.parse(payload);
                     if (evt.type === 'delta') onDelta(evt.text);
-                    if (evt.type === 'done') onDone(evt.usage);
+                    if (evt.type === 'done') onDone(evt.usage, evt.sessionId);
                     if (evt.type === 'error') onError(evt.message);
+                    if (evt.type === 'session' && onSessionId) onSessionId(evt.sessionId);
                 } catch (err) {
                     console.warn('Failed to parse SSE line:', line);
                 }

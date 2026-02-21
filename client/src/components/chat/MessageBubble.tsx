@@ -2,6 +2,7 @@ import React from 'react';
 import type { Message } from '../../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { TransparencyPanel } from '../transparency/TransparencyPanel';
+import { FileActionCard } from '../files/FileActionCard';
 
 interface MessageBubbleProps {
     message: Message;
@@ -29,6 +30,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
         return null;
     }
 
+    const hasFileActions = message.fileActions && message.fileActions.length > 0;
+
     // Agent message
     return (
         <div className="flex justify-start w-full mb-6">
@@ -40,8 +43,16 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
                     />
                 )}
 
+                {hasFileActions && (
+                    <div className={`px-4 py-3 space-y-2 ${message.transparency ? 'border-t border-gray-100' : ''}`}>
+                        {message.fileActions.map((fa) => (
+                            <FileActionCard key={fa.id} action={fa} />
+                        ))}
+                    </div>
+                )}
+
                 {message.displayContent && (
-                    <div className={`p-5 ${message.transparency ? 'border-t border-gray-100' : ''}`}>
+                    <div className={`p-5 ${(message.transparency || hasFileActions) ? 'border-t border-gray-100' : ''}`}>
                         <div className="prose prose-blue max-w-none">
                             {message.status === 'streaming' ? (
                                 <div className="font-sans text-base text-gray-800 m-0 min-h-[1.5rem] whitespace-pre-wrap">
@@ -72,3 +83,4 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
         </div>
     );
 };
+
