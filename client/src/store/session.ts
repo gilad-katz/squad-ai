@@ -44,10 +44,30 @@ export const useSessionStore = create<SessionStore>((set) => ({
     },
 
     appendAgentDelta: (id, delta) => set(s => ({
-        messages: s.messages.map(m =>
-            m.id === id ? { ...m, content: m.content + delta, displayContent: m.content + delta }
-                : m
-        )
+        messages: s.messages.map(m => {
+            if (m.id !== id) return m;
+            const newContent = m.content + delta;
+
+            // Strip transparency out of displayContent even while streaming
+            let displayContent = newContent;
+            const splitPoint = newContent.indexOf('TRANSPARENCY_START');
+            const endPoint = newContent.indexOf('TRANSPARENCY_END');
+
+            if (splitPoint >= 0) {
+                if (endPoint >= 0) {
+                    const before = newContent.slice(0, splitPoint).trim();
+                    const after = newContent.slice(endPoint + 'TRANSPARENCY_END'.length).trim();
+                    displayContent = (before + '\n\n' + after).trim();
+                } else {
+                    displayContent = newContent.slice(0, splitPoint).trim();
+                }
+            }
+
+            // Live parse transparency
+            const transparency = parseTransparency(newContent, true);
+
+            return { ...m, content: newContent, displayContent, transparency };
+        })
     })),
 
     finaliseAgentMessage: (id) => set(s => ({

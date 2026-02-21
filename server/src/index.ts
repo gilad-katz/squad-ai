@@ -2,10 +2,12 @@ import 'dotenv/config';
 
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import healthRouter from './routes/health';
 import chatRouter from './routes/chat';
 
 const app = express();
+app.use(helmet());
 app.use(cors({ origin: process.env.ALLOWED_ORIGIN || 'http://localhost:3000' }));
 app.use(express.json());
 

@@ -24,19 +24,35 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
         );
     }
 
+    // Hide agent message bubble completely only if it has NO content AND NO transparency data yet
+    if (message.status === 'streaming' && !message.displayContent && !message.transparency) {
+        return null;
+    }
+
     // Agent message
     return (
         <div className="flex justify-start w-full mb-6">
-            <div className="flex flex-col max-w-[85%] w-full bg-white border border-gray-200 rounded-2xl rounded-tl-sm shadow-sm overflow-hidden">
-                <div className="p-5">
-                    <div className="prose prose-blue max-w-none">
-                        {message.status === 'streaming' ? (
-                            <pre className="whitespace-pre-wrap font-sans text-base text-gray-800 m-0">{message.displayContent}</pre>
-                        ) : (
-                            <MarkdownRenderer content={message.displayContent} />
-                        )}
+            <div className="flex flex-col max-w-[85%] min-w-[200px] bg-white border border-gray-200 rounded-2xl rounded-tl-sm shadow-sm overflow-hidden text-left">
+                {message.transparency && (
+                    <TransparencyPanel
+                        data={message.transparency}
+                        isStreaming={message.status === 'streaming'}
+                    />
+                )}
+
+                {message.displayContent && (
+                    <div className={`p-5 ${message.transparency ? 'border-t border-gray-100' : ''}`}>
+                        <div className="prose prose-blue max-w-none">
+                            {message.status === 'streaming' ? (
+                                <div className="font-sans text-base text-gray-800 m-0 min-h-[1.5rem] whitespace-pre-wrap">
+                                    {message.displayContent}
+                                </div>
+                            ) : (
+                                <MarkdownRenderer content={message.displayContent} />
+                            )}
+                        </div>
                     </div>
-                </div>
+                )}
 
                 {message.status === 'error' && onRetry && (
                     <div className="bg-red-50 border-t border-red-100 px-5 py-3 flex items-center justify-between" role="alert">
@@ -51,10 +67,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
                             Retry
                         </button>
                     </div>
-                )}
-
-                {message.status !== 'error' && message.transparency && (
-                    <TransparencyPanel data={message.transparency} />
                 )}
             </div>
         </div>

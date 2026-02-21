@@ -7,15 +7,22 @@ import { AssumptionsList } from './AssumptionsList';
 
 interface TransparencyPanelProps {
     data: TransparencyData;
+    isStreaming?: boolean;
 }
 
-export const TransparencyPanel: React.FC<TransparencyPanelProps> = ({ data }) => {
-    const [isOpen, setIsOpen] = useState(false);
+export const TransparencyPanel: React.FC<TransparencyPanelProps> = ({ data, isStreaming }) => {
+    // Auto-expand if we are currently streaming the reasoning
+    const [isOpen, setIsOpen] = useState(isStreaming || false);
+
+    // Also auto-expand if streaming starts after mount (unlikely but safe)
+    React.useEffect(() => {
+        if (isStreaming) setIsOpen(true);
+    }, [isStreaming]);
 
     if (!data) return null;
 
     return (
-        <div className="bg-gray-50 border-t border-gray-100 overflow-hidden text-left">
+        <div className="bg-gray-50 overflow-hidden text-left">
             <button
                 onClick={() => setIsOpen(!isOpen)}
                 className="w-full flex items-center justify-between px-5 py-3 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors focus:ring-2 focus:ring-inset focus:ring-blue-500 outline-none"

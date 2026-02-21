@@ -8,24 +8,95 @@ interface ChatThreadProps {
 
 export const ChatThread: React.FC<ChatThreadProps> = ({ onRetry }) => {
     const messages = useSessionStore(state => state.messages);
+    const phase = useSessionStore(state => state.phase);
     const contextWarning = useSessionStore(state => state.contextWarning);
-    const scrollRef = useRef<HTMLDivElement>(null);
-    const trackScrollRef = useRef(true);
+    const scrollerRef = useRef<HTMLElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const isLockedToBottom = useRef(true);
+    const prevMessagesLen = useRef(messages.length);
 
-    const handleScroll = (e: React.UIEvent<HTMLElement>) => {
-        const target = e.target as HTMLElement;
-        const reachedBottom = Math.abs(target.scrollHeight - target.scrollTop - target.clientHeight) < 50;
-        trackScrollRef.current = reachedBottom;
+    const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+        if (scrollerRef.current) {
+            const { scrollHeight, clientHeight } = scrollerRef.current;
+            scrollerRef.current.scrollTo({
+                top: scrollHeight - clientHeight,
+                behavior
+            });
+        }
     };
 
+    // Aggressive re-locking: reset to bottom whenever a phase transition happens
+    // (Thinking -> Responding -> Thinking -> Responding)
     useEffect(() => {
-        if (trackScrollRef.current && scrollRef.current) {
-            scrollRef.current.scrollIntoView({ behavior: 'smooth' });
+        if (phase !== 'ready') {
+            isLockedToBottom.current = true;
+            // Immediate jump to keep up with the handoff
+            scrollToBottom('auto');
         }
-    }, [messages]);
+    }, [phase]);
+
+    // Tracking if we should auto-scroll
+    const handleScroll = (e: React.UIEvent<HTMLElement>) => {
+        const target = e.target as HTMLElement;
+        // In active phases, we use a MASSIVE threshold (800px) because long code blocks
+        // can shift the height significantly before the next ResizeObserver tick.
+        // In ready phase, we use 200px.
+        const isActive = phase !== 'ready';
+        const threshold = isActive ? 800 : 200;
+
+        const isAtBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + threshold;
+        isLockedToBottom.current = isAtBottom;
+    };
+
+    // Use ResizeObserver to detect content growth (e.g. streaming text, markdown rendering)
+    useEffect(() => {
+        if (!containerRef.current) return;
+
+        const observer = new ResizeObserver(() => {
+            if (isLockedToBottom.current) {
+                const isActive = phase === 'thinking' || phase === 'responding';
+                // Always sync with animation frame to ensure DOM is drawn
+                requestAnimationFrame(() => {
+                    scrollToBottom(isActive ? 'auto' : 'smooth');
+                });
+            }
+        });
+
+        observer.observe(containerRef.current);
+        return () => observer.disconnect();
+    }, [phase]);
+
+    // Force scroll on new user message and handle cleanup
+    useEffect(() => {
+        const newMsgCount = messages.length - prevMessagesLen.current;
+        const lastMsg = messages[messages.length - 1];
+
+        // Always lock and scroll when the user sends a message
+        if (newMsgCount > 0 && lastMsg?.role === 'user') {
+            isLockedToBottom.current = true;
+            scrollToBottom('auto');
+        }
+
+        // Final cleanup scrolls when the agent finishes to catch all late reflows
+        if (phase === 'ready' && isLockedToBottom.current) {
+            const timers = [
+                setTimeout(() => scrollToBottom('smooth'), 100),
+                setTimeout(() => scrollToBottom('smooth'), 300),
+                setTimeout(() => scrollToBottom('smooth'), 1000), // Longer tail for complex layout
+            ];
+            return () => timers.forEach(clearTimeout);
+        }
+
+        prevMessagesLen.current = messages.length;
+    }, [messages.length, phase]);
+
+    // Indicator logic: show dots if we are thinking OR if we are responding but neither text nor transparency have arrived yet
+    const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+    const isAssistantStarting = lastMsg?.role === 'assistant' && !lastMsg.displayContent && !lastMsg.transparency;
+    const showThinkingIndicator = phase === 'thinking' || (phase === 'responding' && isAssistantStarting);
 
     return (
-        <main onScroll={handleScroll} className="flex-1 w-full overflow-y-auto bg-gray-50 pt-24 pb-32">
+        <main ref={scrollerRef} onScroll={handleScroll} className="flex-1 w-full overflow-y-auto bg-gray-50 pt-24 pb-32">
             <div className="max-w-4xl mx-auto px-6 w-full flex flex-col items-center">
                 {contextWarning && (
                     <div className="w-full mb-6 bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg flex items-center justify-between shadow-sm">
@@ -47,11 +118,19 @@ export const ChatThread: React.FC<ChatThreadProps> = ({ onRetry }) => {
                         </p>
                     </div>
                 ) : (
-                    <div className="w-full flex flex-col">
+                    <div ref={containerRef} className="w-full flex flex-col" aria-live="polite" aria-atomic="false">
                         {messages.map((msg) => (
                             <MessageBubble key={msg.id} message={msg} onRetry={onRetry} />
                         ))}
-                        <div ref={scrollRef} />
+                        {showThinkingIndicator && (
+                            <div className="flex justify-start w-full mb-12">
+                                <div className="flex gap-1.5 items-center bg-white border border-gray-200 rounded-2xl rounded-tl-sm shadow-sm px-5 py-4 ml-2">
+                                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-[bounce_1s_infinite_0ms]"></div>
+                                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-[bounce_1s_infinite_200ms]"></div>
+                                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-[bounce_1s_infinite_400ms]"></div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

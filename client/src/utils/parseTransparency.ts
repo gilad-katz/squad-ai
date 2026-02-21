@@ -1,10 +1,15 @@
 import type { TransparencyData } from '../types';
 
-export function parseTransparency(raw: string): TransparencyData | null {
-    const match = raw.match(/TRANSPARENCY_START([\s\S]*?)TRANSPARENCY_END/);
-    if (!match) return null;
+export function parseTransparency(raw: string, allowPartial: boolean = false): TransparencyData | null {
+    const startIdx = raw.indexOf('TRANSPARENCY_START');
+    if (startIdx === -1) return null;
 
-    const block = match[1];
+    const endIdx = raw.indexOf('TRANSPARENCY_END');
+    if (endIdx === -1 && !allowPartial) return null;
+
+    const block = endIdx >= 0
+        ? raw.slice(startIdx + 'TRANSPARENCY_START'.length, endIdx)
+        : raw.slice(startIdx + 'TRANSPARENCY_START'.length);
 
     const reasoning = extractSection(block, 'REASONING:');
     const tasksRaw = extractSection(block, 'TASKS:');
@@ -12,9 +17,16 @@ export function parseTransparency(raw: string): TransparencyData | null {
 
     let tasks: TransparencyData['tasks'] = [];
     try {
-        tasks = JSON.parse(tasksRaw);
+        const jsonMatch = tasksRaw.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+            tasks = JSON.parse(jsonMatch[0]);
+        } else if (tasksRaw.trim()) {
+            tasks = [{ id: 1, description: tasksRaw.trim(), status: 'pending' }];
+        }
     } catch {
-        tasks = [{ id: 1, description: tasksRaw, status: 'done' }];
+        if (tasksRaw.trim()) {
+            tasks = [{ id: 1, description: tasksRaw.trim(), status: 'pending' }];
+        }
     }
 
     return { reasoning: reasoning.trim(), tasks, assumptions: assumptions.trim() };
