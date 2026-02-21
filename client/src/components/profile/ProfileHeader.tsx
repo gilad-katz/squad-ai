@@ -1,5 +1,6 @@
 import React from 'react';
 import { PhaseBadge } from '../ui/PhaseBadge';
+import { GitHeaderButton } from '../settings/GitSettings';
 import type { PhaseState } from '../../types';
 
 interface ProfileHeaderProps {
@@ -28,7 +29,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({ phase, onNewSessio
                 </div>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+                <GitHeaderButton />
                 <PhaseBadge phase={phase} />
                 <button
                     onClick={onNewSession}
@@ -40,3 +42,4 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({ phase, onNewSessio
         </header>
     );
 };
+

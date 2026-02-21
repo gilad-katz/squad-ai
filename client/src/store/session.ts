@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Message, PhaseState, FileAction } from '../types';
 import { parseTransparency } from '../utils/parseTransparency';
 import { parseFileActions } from '../utils/parseFileActions';
+import { parseGitActions } from '../utils/parseGitActions';
 
 interface SessionStore {
     messages: Message[];
@@ -18,6 +19,7 @@ interface SessionStore {
     setContextWarning: (warning: boolean) => void;
     setSessionId: (id: string) => void;
     addFileActions: (msgId: string, actions: FileAction[]) => void;
+    updateGitActionResult: (msgId: string, index: number, output?: string, error?: string) => void;
     startNewSession: () => void;
 }
 
@@ -50,6 +52,22 @@ function stripStructuredBlocks(content: string, fileActions?: FileAction[]): str
     } else if (fStart >= 0) {
         result = result.slice(0, fStart).trim();
     }
+
+    // Strip GIT_ACTIONS block
+    const gStart = result.indexOf('GIT_ACTIONS_START');
+    const gEnd = result.indexOf('GIT_ACTIONS_END');
+    if (gStart >= 0 && gEnd >= 0) {
+        const before = result.slice(0, gStart).trim();
+        const after = result.slice(gEnd + 'GIT_ACTIONS_END'.length).trim();
+        result = (before + '\n\n' + after).trim();
+    } else if (gStart >= 0) {
+        result = result.slice(0, gStart).trim();
+    }
+
+    // Strip out ugly raw Git Terminal Output logs (e.g., [main 736d5e7] FEAT: ..., Enumerating objects: 4, done.)
+    // We want the agent to summarize these naturally, but they often just parrot the raw strings.
+    const gitLogRegex = /(\[main [a-f0-9]{7}\].*?|Enumerating objects:.*?\d+.*?(done\.|pack-reused \d+)(?:\s*To https?:\/\/.*?\.git\s+[a-f0-9]+\.\.[a-f0-9]+\s+[a-zA-Z0-9_-]+\s*->\s*[a-zA-Z0-9_-]+)?)/gs;
+    result = result.replace(gitLogRegex, '').replace(/\n{3,}/g, '\n\n').trim();
 
     // If we have file actions, strip redundant code blocks from the markdown
     if (fileActions && fileActions.length > 0) {
@@ -110,7 +128,7 @@ export const useSessionStore = create<SessionStore>((set) => ({
     appendUserMessage: (content) => set(s => ({
         messages: [...s.messages, {
             id: crypto.randomUUID(), role: 'user', content,
-            displayContent: content, transparency: null, fileActions: [],
+            displayContent: content, transparency: null, fileActions: [], gitActions: [],
             status: 'complete', timestamp: Date.now()
         }]
     })),
@@ -121,7 +139,7 @@ export const useSessionStore = create<SessionStore>((set) => ({
             streamActive: true,
             messages: [...s.messages, {
                 id, role: 'assistant', content: '', displayContent: '',
-                transparency: null, fileActions: [], status: 'streaming', timestamp: Date.now()
+                transparency: null, fileActions: [], gitActions: [], status: 'streaming', timestamp: Date.now()
             }]
         }));
         return id;
@@ -139,10 +157,35 @@ export const useSessionStore = create<SessionStore>((set) => ({
             const { fileActions } = parseFileActions(newContent, true);
             const resolvedActions = fileActions.length > 0 ? fileActions : m.fileActions;
 
+            // Live parse git actions but preserve any async execution output/error
+            // If the LLM generates multiple actions across streams (e.g. multi-turn loop), we merge them.
+            const parsedGit = parseGitActions(newContent, true).gitActions;
+
+            // Start with the existing actions, and we'll update or append from `parsedGit`
+            const resolvedGitMap = new Map<string, any>();
+            for (const act of m.gitActions) {
+                // Deduplicate by ID if present, otherwise fallback to the exact command (or action name for clone)
+                const key = act.id || act.command || act.action;
+                resolvedGitMap.set(key, act);
+            }
+
+            for (const newAct of parsedGit) {
+                const key = newAct.id || newAct.command || newAct.action;
+                const oldAct = resolvedGitMap.get(key);
+                if (oldAct) {
+                    // Update existing action, preserving output/error
+                    resolvedGitMap.set(key, { ...newAct, output: oldAct.output, error: oldAct.error });
+                } else {
+                    // It's a brand new action 
+                    resolvedGitMap.set(key, newAct);
+                }
+            }
+            const resolvedGitActions = Array.from(resolvedGitMap.values());
+
             // Strip structured blocks + redundant code from displayContent
             const displayContent = stripStructuredBlocks(newContent, resolvedActions);
 
-            return { ...m, content: newContent, displayContent, transparency, fileActions: resolvedActions };
+            return { ...m, content: newContent, displayContent, transparency, fileActions: resolvedActions, gitActions: resolvedGitActions };
         })
     })),
 
@@ -155,11 +198,31 @@ export const useSessionStore = create<SessionStore>((set) => ({
             const transparency = parseTransparency(m.content);
             const { fileActions } = parseFileActions(m.content);
             const resolvedActions = fileActions.length > 0 ? fileActions : m.fileActions;
+
+            const parsedGit = parseGitActions(m.content).gitActions;
+            const resolvedGitMapFinal = new Map<string, any>();
+            for (const act of m.gitActions) {
+                const key = act.id || act.command || act.action;
+                resolvedGitMapFinal.set(key, act);
+            }
+
+            for (const newAct of parsedGit) {
+                const key = newAct.id || newAct.command || newAct.action;
+                const oldAct = resolvedGitMapFinal.get(key);
+                if (oldAct) {
+                    resolvedGitMapFinal.set(key, { ...newAct, output: oldAct.output, error: oldAct.error });
+                } else {
+                    resolvedGitMapFinal.set(key, newAct);
+                }
+            }
+            const resolvedGitActionsFinal = Array.from(resolvedGitMapFinal.values());
+
             const displayContent = stripStructuredBlocks(m.content, resolvedActions);
 
             return {
                 ...m, status: 'complete', displayContent, transparency,
-                fileActions: fileActions.length > 0 ? fileActions : m.fileActions
+                fileActions: resolvedActions,
+                gitActions: resolvedGitActionsFinal
             };
         })
     })),
@@ -182,6 +245,17 @@ export const useSessionStore = create<SessionStore>((set) => ({
         messages: s.messages.map(m =>
             m.id === msgId ? { ...m, fileActions: [...m.fileActions, ...actions] } : m
         )
+    })),
+
+    updateGitActionResult: (msgId, index, output, error) => set(s => ({
+        messages: s.messages.map(m => {
+            if (m.id !== msgId) return m;
+            const newGitActions = [...m.gitActions];
+            if (newGitActions[index]) {
+                newGitActions[index] = { ...newGitActions[index], output, error };
+            }
+            return { ...m, gitActions: newGitActions };
+        })
     })),
 
     startNewSession: () => set({

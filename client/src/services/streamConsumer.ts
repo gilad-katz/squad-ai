@@ -6,6 +6,7 @@ export async function consumeStream(
     onDelta: (text: string) => void,
     onDone: (usage?: { input_tokens: number, output_tokens: number }, sessionId?: string) => void,
     onError: (msg: string) => void,
+    onGitResult?: (index: number, output?: string, error?: string) => void,
     onSessionId?: (id: string) => void
 ): Promise<void> {
     try {
@@ -41,6 +42,7 @@ export async function consumeStream(
                     if (evt.type === 'delta') onDelta(evt.text);
                     if (evt.type === 'done') onDone(evt.usage, evt.sessionId);
                     if (evt.type === 'error') onError(evt.message);
+                    if (evt.type === 'git_result' && onGitResult) onGitResult(evt.index, evt.output, evt.error);
                     if (evt.type === 'session' && onSessionId) onSessionId(evt.sessionId);
                 } catch (err) {
                     console.warn('Failed to parse SSE line:', line);

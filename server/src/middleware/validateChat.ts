@@ -8,6 +8,7 @@ const MessageSchema = z.object({
 
 const ChatBodySchema = z.object({
     messages: z.array(MessageSchema).min(1).max(200),
+    sessionId: z.string().nullish(),
 });
 
 export const validateChat: RequestHandler = (req, res, next) => {

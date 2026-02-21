@@ -21,6 +21,14 @@ export interface FileAction {
     warnings?: number;      // lint warning count (placeholder)
 }
 
+export interface GitAction {
+    id: string;
+    action: 'clone' | 'execute';
+    command?: string;
+    output?: string;
+    error?: string;
+}
+
 export interface Message {
     id: string;
     role: 'user' | 'assistant';
@@ -28,6 +36,16 @@ export interface Message {
     displayContent: string;          // stripped of structured blocks
     transparency: TransparencyData | null;
     fileActions: FileAction[];
+    gitActions: GitAction[];
     status: 'complete' | 'streaming' | 'error';
     timestamp: number;
+}
+
+export interface WorkspaceConfig {
+    repoUrl: string;
+    owner: string;
+    repo: string;
+    defaultBranch: string;
+    connectedAt: string;
+    githubToken?: string;
 }

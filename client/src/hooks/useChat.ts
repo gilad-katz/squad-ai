@@ -65,6 +65,9 @@ export function useChat() {
             (msg) => {
                 useSessionStore.getState().setAgentError(agentMsgId, msg);
             },
+            (index, output, error) => {
+                useSessionStore.getState().updateGitActionResult(agentMsgId, index, output, error);
+            },
             (sid) => {
                 // Handle session event
                 useSessionStore.getState().setSessionId(sid);

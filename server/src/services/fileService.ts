@@ -10,7 +10,7 @@ const WORKSPACE_ROOT = path.join(__dirname, '../../workspace');
 function safePath(sessionId: string, filepath: string): string {
     const sessionDir = path.join(WORKSPACE_ROOT, sessionId);
     const resolved = path.resolve(sessionDir, filepath);
-    if (!resolved.startsWith(sessionDir + path.sep) && resolved !== sessionDir) {
+    if (!resolved.startsWith(sessionDir + path.sep)) {
         throw new Error(`Path traversal attempt blocked: ${filepath}`);
     }
     return resolved;
@@ -34,6 +34,9 @@ export function writeFile(sessionId: string, filepath: string, content: string):
     let oldContent: string | null = null;
 
     if (fs.existsSync(fullPath)) {
+        if (fs.statSync(fullPath).isDirectory()) {
+            throw new Error(`Cannot write file over directory: ${filepath}`);
+        }
         oldContent = fs.readFileSync(fullPath, 'utf8');
     }
 
@@ -47,6 +50,9 @@ export function writeFile(sessionId: string, filepath: string, content: string):
  */
 export function readFile(sessionId: string, filepath: string): string {
     const fullPath = safePath(sessionId, filepath);
+    if (fs.existsSync(fullPath) && fs.statSync(fullPath).isDirectory()) {
+        throw new Error(`Cannot read directory as file: ${filepath}`);
+    }
     return fs.readFileSync(fullPath, 'utf8');
 }
 
@@ -56,6 +62,9 @@ export function readFile(sessionId: string, filepath: string): string {
 export function deleteFile(sessionId: string, filepath: string): void {
     const fullPath = safePath(sessionId, filepath);
     if (fs.existsSync(fullPath)) {
+        if (fs.statSync(fullPath).isDirectory()) {
+            throw new Error(`Cannot delete directory: ${filepath}`);
+        }
         fs.unlinkSync(fullPath);
     }
 }

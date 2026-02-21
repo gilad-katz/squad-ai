@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ProfileHeader } from '../profile/ProfileHeader';
 import { ChatThread } from '../chat/ChatThread';
 import { MessageComposer } from '../chat/MessageComposer';
+import { GitSettingsPanel } from '../settings/GitSettings';
 import { useSessionStore } from '../../store/session';
+import { useWorkspaceStore } from '../../store/workspace';
 import { useChat } from '../../hooks/useChat';
 
 export const AppShell: React.FC = () => {
@@ -11,6 +13,10 @@ export const AppShell: React.FC = () => {
     const startNewSession = useSessionStore(state => state.startNewSession);
     const messages = useSessionStore(state => state.messages);
     const { sendMessage } = useChat();
+    const fetchConfig = useWorkspaceStore(state => state.fetchConfig);
+
+    // Fetch persisted workspace git config on mount
+    useEffect(() => { fetchConfig(); }, [fetchConfig]);
 
     const handleNewSession = () => {
         if (messages.length > 0) {
@@ -27,6 +33,7 @@ export const AppShell: React.FC = () => {
             <ProfileHeader phase={phase} onNewSession={handleNewSession} />
             <ChatThread onRetry={(id) => sendMessage(null, id)} />
             <MessageComposer onSend={(text) => sendMessage(text)} disabled={streamActive} />
+            <GitSettingsPanel />
         </div>
     );
 };

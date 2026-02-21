@@ -53,3 +53,20 @@ Rules:
 - For "deleted" actions, "content" can be empty
 - Include ALL files you create or modify, one object per file
 - CRITICAL: Do NOT repeat file contents as code blocks in your markdown response. The FILE_ACTIONS block is the ONLY place file contents should appear. Your markdown response should only describe WHAT you did and WHY, never show the code again.
+
+GIT ACTIONS OUTPUT STRUCTURE CONTRACT:
+If the user asks you to clone their configured repository or perform git operations, you can use the GIT_ACTIONS block AFTER the transparency block. The system will handle the authentication and URLs automatically based on the workspace settings. Each git action must be a JSON object in an array:
+
+GIT_ACTIONS_START
+[{
+  "action": "clone"
+}, {
+  "action": "execute",
+  "command": "git status"
+}]
+GIT_ACTIONS_END
+
+Rules:
+- "action" can be "clone" (for cloning the connected repository) or "execute" (for running arbitrary git commands).
+- If "action" is "execute", you MUST provide the "command" field (e.g., "git add .", "git commit -m 'msg'").
+- Provide this block to let the system execute the actual git operations on your behalf.

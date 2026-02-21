@@ -3,6 +3,7 @@ import type { Message } from '../../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { TransparencyPanel } from '../transparency/TransparencyPanel';
 import { FileActionCard } from '../files/FileActionCard';
+import { GitActionCard } from './GitActionCard';
 
 interface MessageBubbleProps {
     message: Message;
@@ -31,6 +32,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
     }
 
     const hasFileActions = message.fileActions && message.fileActions.length > 0;
+    const hasGitActions = message.gitActions && message.gitActions.length > 0;
 
     // Agent message
     return (
@@ -51,8 +53,16 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
                     </div>
                 )}
 
+                {hasGitActions && (
+                    <div className={`px-4 py-3 space-y-2 ${(message.transparency || hasFileActions) ? 'border-t border-gray-100' : ''}`}>
+                        {message.gitActions.map((ga) => (
+                            <GitActionCard key={ga.id} action={ga} isStreaming={message.status === 'streaming'} />
+                        ))}
+                    </div>
+                )}
+
                 {message.displayContent && (
-                    <div className={`p-5 ${(message.transparency || hasFileActions) ? 'border-t border-gray-100' : ''}`}>
+                    <div className={`p-5 ${(message.transparency || hasFileActions || hasGitActions) ? 'border-t border-gray-100' : ''}`}>
                         <div className="prose prose-blue max-w-none">
                             {message.status === 'streaming' ? (
                                 <div className="font-sans text-base text-gray-800 m-0 min-h-[1.5rem] whitespace-pre-wrap">

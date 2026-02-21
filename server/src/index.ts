@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import healthRouter from './routes/health';
 import chatRouter from './routes/chat';
 import filesRouter from './routes/files';
+import gitRouter from './routes/git';
 
 const app = express();
 app.use(helmet());
@@ -15,6 +16,7 @@ app.use(express.json());
 app.use('/api/health', healthRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/files', filesRouter);
+app.use('/api/git', gitRouter);
 
 const PORT = process.env.PORT || 3001;
 

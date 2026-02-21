@@ -1,0 +1,351 @@
+/* ── Git Settings Panel ──────────────────────────────────────────────────────── */
+
+.git-settings-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(4px);
+    z-index: 50;
+    animation: git-fade-in 0.2s ease-out;
+}
+
+.git-settings-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 420px;
+    max-width: 90vw;
+    background: #ffffff;
+    border-left: 1px solid #e5e7eb;
+    box-shadow: -8px 0 32px rgba(0, 0, 0, 0.12);
+    z-index: 51;
+    display: flex;
+    flex-direction: column;
+    animation: git-slide-in 0.25s ease-out;
+}
+
+.git-settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.git-settings-header h2 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #111827;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.git-settings-header h2 svg {
+    color: #6b7280;
+}
+
+.git-settings-close {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    color: #6b7280;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.git-settings-close:hover {
+    background: #f3f4f6;
+    color: #111827;
+}
+
+.git-settings-body {
+    flex: 1;
+    padding: 24px;
+    overflow-y: auto;
+}
+
+/* ── Connected State ─────────────────────────────────────────────────────────── */
+
+.git-connected-card {
+    background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+    border: 1px solid #bbf7d0;
+    border-radius: 12px;
+    padding: 20px;
+}
+
+.git-connected-badge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.git-connected-badge svg {
+    color: #16a34a;
+    flex-shrink: 0;
+}
+
+.git-connected-repo {
+    font-size: 16px;
+    font-weight: 600;
+    color: #111827;
+}
+
+.git-connected-repo a {
+    color: inherit;
+    text-decoration: none;
+    transition: color 0.15s;
+}
+
+.git-connected-repo a:hover {
+    color: #2563eb;
+}
+
+.git-connected-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.git-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #6b7280;
+}
+
+.git-meta-row svg {
+    width: 14px;
+    height: 14px;
+    color: #9ca3af;
+    flex-shrink: 0;
+}
+
+.git-branch-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: #dbeafe;
+    color: #1e40af;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.git-disconnect-btn {
+    width: 100%;
+    padding: 10px 16px;
+    border: 1px solid #fca5a5;
+    background: #fff;
+    border-radius: 8px;
+    color: #dc2626;
+    font-weight: 500;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.git-disconnect-btn:hover {
+    background: #fef2f2;
+    border-color: #f87171;
+}
+
+.git-disconnect-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ── Connect Form ────────────────────────────────────────────────────────────── */
+
+.git-connect-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.git-connect-form label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+    font-weight: 500;
+    color: #374151;
+}
+
+.git-optional {
+    font-size: 12px;
+    color: #9ca3af;
+    font-weight: 400;
+}
+
+.git-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.git-connect-input {
+    flex: 1;
+    padding: 10px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 14px;
+    color: #111827;
+    background: #fff;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.git-connect-input::placeholder {
+    color: #9ca3af;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.git-connect-input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.git-connect-btn {
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.git-connect-btn:hover:not(:disabled) {
+    background: linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%);
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+}
+
+.git-connect-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.git-connect-hint {
+    font-size: 12px;
+    color: #9ca3af;
+    line-height: 1.5;
+}
+
+/* ── Error ───────────────────────────────────────────────────────────────────── */
+
+.git-error {
+    padding: 12px 16px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    color: #dc2626;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+/* ── Loading Spinner ─────────────────────────────────────────────────────────── */
+
+.git-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: git-spin 0.6s linear infinite;
+}
+
+.git-spinner--dark {
+    border-color: rgba(0, 0, 0, 0.1);
+    border-top-color: #6b7280;
+}
+
+/* ── Header Button ───────────────────────────────────────────────────────────── */
+
+.git-header-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1px solid #e5e7eb;
+    background: #fff;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #374151;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.git-header-btn:hover {
+    background: #f9fafb;
+    border-color: #d1d5db;
+}
+
+.git-header-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.git-header-btn--connected {
+    border-color: #bbf7d0;
+    background: #f0fdf4;
+    color: #15803d;
+}
+
+.git-header-btn--connected:hover {
+    background: #dcfce7;
+    border-color: #86efac;
+}
+
+.git-header-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #22c55e;
+}
+
+/* ── Animations ──────────────────────────────────────────────────────────────── */
+
+@keyframes git-slide-in {
+    from {
+        transform: translateX(100%);
+    }
+
+    to {
+        transform: translateX(0);
+    }
+}
+
+@keyframes git-fade-in {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes git-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
