@@ -5,9 +5,10 @@ import { TransparencyPanel } from '../transparency/TransparencyPanel';
 
 interface MessageBubbleProps {
     message: Message;
+    onRetry?: (id: string) => void;
 }
 
-export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
+export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }) => {
     const isUser = message.role === 'user';
 
     if (isUser) {
@@ -37,7 +38,22 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
                     </div>
                 </div>
 
-                {message.transparency && (
+                {message.status === 'error' && onRetry && (
+                    <div className="bg-red-50 border-t border-red-100 px-5 py-3 flex items-center justify-between" role="alert">
+                        <span className="text-sm font-medium text-red-700 flex items-center gap-1.5">
+                            <span className="text-red-500 font-bold px-1 rounded bg-red-100/50">⚠</span>
+                            Response interrupted. Partial content shown above.
+                        </span>
+                        <button
+                            onClick={() => onRetry(message.id)}
+                            className="px-3 py-1.5 text-xs font-semibold text-white bg-red-600 rounded-md shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 transition-colors"
+                        >
+                            Retry
+                        </button>
+                    </div>
+                )}
+
+                {message.status !== 'error' && message.transparency && (
                     <TransparencyPanel data={message.transparency} />
                 )}
             </div>

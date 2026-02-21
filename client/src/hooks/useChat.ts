@@ -4,20 +4,31 @@ import { consumeStream } from '../services/streamConsumer';
 export function useChat() {
     const store = useSessionStore();
 
-    const sendMessage = async (content: string) => {
-        if (store.streamActive || !content.trim()) return;
+    const sendMessage = async (contentInput: string | null, retryMsgId?: string) => {
+        if (store.streamActive) return;
 
-        store.appendUserMessage(content);
+        let content = contentInput;
+        // If it's a retry and we didn't pass explicit content, find the last user message
+        if (retryMsgId) {
+            const messages = useSessionStore.getState().messages;
+            const index = messages.findIndex(m => m.id === retryMsgId);
+            if (index > 0 && messages[index - 1].role === 'user') {
+                content = messages[index - 1].content;
+            }
+        }
+
+        if (!content || !content.trim()) return;
+
+        // Only append new user message if this isn't a retry, or if it's the first time
+        if (!retryMsgId) {
+            store.appendUserMessage(content);
+        }
         store.setPhase('thinking');
 
-        // we need to get the latest messages up to this new one for the API
-        // `store.messages` right here doesn't have the newly appended user message 
-        // because Zustand state updates asynchronously in React unless we use getState()
         const currentMessages = useSessionStore.getState().messages;
-        const apiMessages = currentMessages.map(m => ({
-            role: m.role,
-            content: m.content
-        }));
+        const apiMessages = currentMessages
+            .filter(m => m.status === 'complete' || m.role === 'user') // drop failed partial msg from history targeting
+            .map(m => ({ role: m.role, content: m.content }));
 
         const agentMsgId = useSessionStore.getState().appendAgentMessageStart();
         let firstTokenReceived = false;
@@ -31,8 +42,17 @@ export function useChat() {
                 }
                 useSessionStore.getState().appendAgentDelta(agentMsgId, delta);
             },
-            () => {
+            (usage) => {
                 useSessionStore.getState().finaliseAgentMessage(agentMsgId);
+
+                if (usage) {
+                    const totalTokens = usage.input_tokens + usage.output_tokens;
+                    // Gemini 2.5 flash is about 1M tokens, but we use Sonnet 4.6 MVP numbers as spec baseline (180k * 0.8)
+                    const contextLimit = 180000;
+                    if (totalTokens > contextLimit * 0.80) {
+                        useSessionStore.getState().setContextWarning(true);
+                    }
+                }
             },
             (msg) => {
                 useSessionStore.getState().setAgentError(agentMsgId, msg);

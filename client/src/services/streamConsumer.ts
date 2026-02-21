@@ -3,7 +3,7 @@ import type { Message } from '../types';
 export async function consumeStream(
     messages: Pick<Message, 'role' | 'content'>[],
     onDelta: (text: string) => void,
-    onDone: () => void,
+    onDone: (usage?: { input_tokens: number, output_tokens: number }) => void,
     onError: (msg: string) => void
 ): Promise<void> {
     try {
@@ -37,7 +37,7 @@ export async function consumeStream(
 
                     const evt = JSON.parse(payload);
                     if (evt.type === 'delta') onDelta(evt.text);
-                    if (evt.type === 'done') onDone();
+                    if (evt.type === 'done') onDone(evt.usage);
                     if (evt.type === 'error') onError(evt.message);
                 } catch (err) {
                     console.warn('Failed to parse SSE line:', line);

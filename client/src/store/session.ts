@@ -6,12 +6,14 @@ interface SessionStore {
     messages: Message[];
     streamActive: boolean;
     phase: PhaseState;
+    contextWarning: boolean;
     appendUserMessage: (content: string) => void;
     appendAgentMessageStart: () => string;   // returns new message id
     appendAgentDelta: (id: string, delta: string) => void;
     finaliseAgentMessage: (id: string) => void;
     setAgentError: (id: string, msg: string) => void;
     setPhase: (phase: PhaseState) => void;
+    setContextWarning: (warning: boolean) => void;
     startNewSession: () => void;
 }
 
@@ -19,6 +21,7 @@ export const useSessionStore = create<SessionStore>((set) => ({
     messages: [],
     streamActive: false,
     phase: 'ready',
+    contextWarning: false,
 
     appendUserMessage: (content) => set(s => ({
         messages: [...s.messages, {
@@ -84,9 +87,12 @@ export const useSessionStore = create<SessionStore>((set) => ({
 
     setPhase: (phase) => set({ phase }),
 
+    setContextWarning: (warning) => set({ contextWarning: warning }),
+
     startNewSession: () => set({
         messages: [],
         streamActive: false,
-        phase: 'ready'
+        phase: 'ready',
+        contextWarning: false
     })
 }));
