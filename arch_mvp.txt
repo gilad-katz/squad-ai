@@ -1,0 +1,609 @@
+HIGH-LEVEL ARCHITECTURE
+
+Agentic SE Platform
+MVP
+
+System design, component responsibilities, data flows,
+technology decisions, and security model.
+
+VERSION
+ARCH-MVP-1.0
+STATUS
+For Engineering Review
+DERIVED FROM
+MVP PRD v1.0
+DATE
+February 2026
+This document is the authoritative architectural reference for the MVP build. All implementation decisions must be consistent with this design.
+
+1. System Overview
+The MVP is a two-tier web application. A React frontend delivers the chat interface; a Node.js server acts as a secure API proxy between the browser and the Anthropic Claude API. There is no database, no authentication layer, and no persistent storage — by design. These constraints are not accidents; they are the direct result of the MVP scope boundary defined in the PRD.
+
+Architecture Principle
+Build the thinnest possible vertical slice that makes the core loop work correctly and securely. Every component added to the MVP is a component that must be tested, deployed, and maintained. If a component is not required to satisfy an MVP acceptance criterion, it does not exist.
+
+1.1  System Context Diagram
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                         BROWSER  (User Device)                          │
+  │                                                                         │
+  │   ┌──────────────────────────────────────────────────────────────────┐  │
+  │   │                  React Application  (SPA)                        │  │
+  │   │                                                                  │  │
+  │   │   ┌──────────────┐   ┌─────────────────┐   ┌────────────────┐   │  │
+  │   │   │   Profile    │   │  Chat Thread    │   │  Transparency  │   │  │
+  │   │   │   Header     │   │  + Composer     │   │  Panel         │   │  │
+  │   │   └──────────────┘   └────────┬────────┘   └───────▲────────┘   │  │
+  │   │                               │  fetch (POST)      │ structured  │  │
+  │   └───────────────────────────────┼────────────────────┼────────────┘  │
+  │                                   │                    │               │
+  └───────────────────────────────────┼────────────────────┼───────────────┘
+                                      │  SSE stream        │
+                     ─────────────────┼────────────────────┼──────────────
+                           NETWORK     │  (HTTPS only)      │
+                     ─────────────────┼────────────────────┼──────────────
+                                      ▼                    │
+  ┌───────────────────────────────────────────────────────────────────────┐
+  │                    Node.js API Server  (Express)                      │
+  │                                                                       │
+  │   ┌─────────────────────────────────────────────────────────────┐    │
+  │   │  POST /api/chat                                              │    │
+  │   │  • Validate request   • Inject system prompt               │    │
+  │   │  • Build message array • Forward to Anthropic SDK           │    │
+  │   │  • Stream SSE back to client                                │    │
+  │   └──────────────────────────────┬──────────────────────────────┘    │
+  │                                  │  Anthropic SDK  (server-side)      │
+  │                                  │  API_KEY in env only              │
+  └──────────────────────────────────┼───────────────────────────────────┘
+                                     │  HTTPS
+                                     ▼
+  ┌───────────────────────────────────────────────────────────────────────┐
+  │                      Anthropic Claude API                             │
+  │                    claude-sonnet-4-6  (streaming)                     │
+  └───────────────────────────────────────────────────────────────────────┘
+
+2. Component Responsibilities
+2.1  React Frontend
+The frontend is a single-page application. It owns all visual rendering, user interaction, and in-memory session state. It has no direct access to the Anthropic API and no knowledge of the API key.
+
+Component
+Responsibility
+ProfileHeader
+Renders the FE-SENIOR-01 persona identity (name, role, skills). Displays the current phase state (READY / THINKING / BUILDING / RESPONDING) by observing stream state.
+ChatThread
+Renders the chronological message list. Manages scroll anchoring — auto-scrolls to bottom on new content unless the user has scrolled up. Owns the virtual list for performance.
+MessageBubble
+Renders a single message. Manager messages: plain text, right-aligned. Agent messages: Markdown via renderer, left-aligned. Receives the transparency payload as a prop.
+MarkdownRenderer
+Wraps a Markdown-to-HTML library. Responsible for safe rendering (XSS sanitisation). Passes code blocks to CodeBlock component.
+CodeBlock
+Renders a syntax-highlighted code block with language label and copy-to-clipboard action. Lang token comes from the fenced code block declaration.
+TransparencyPanel
+Renders the collapsible disclosure panel. Parses the structured TRANSPARENCY block from the agent response. Renders three sections: Reasoning, Task Breakdown, Assumptions.
+MessageComposer
+Fixed-bottom input area. Handles Enter (send) and Shift+Enter (newline). Disables send while a stream is in flight. Expands vertically up to max height then scrolls.
+SessionController
+Top-level state manager. Owns the messages array, the stream state flag, and the New Session action. Passes the chat submit handler down to MessageComposer.
+StreamConsumer
+Utility responsible for reading the SSE stream from the server, assembling the delta tokens into the growing message buffer, and signalling stream completion.
+
+2.2  Node.js API Server
+The server has one job for MVP: securely proxy chat requests to Anthropic and stream the response back to the browser. It must never expose the API key to the client under any circumstance.
+
+Concern
+Implementation
+Single endpoint
+POST /api/chat — the only route required for MVP.
+Request validation
+Validate that the body is a JSON array of {role, content} message objects. Reject malformed payloads with HTTP 400 before touching the API.
+System prompt injection
+The FE-SENIOR-01 system prompt is loaded from a file (system_prompt.txt) at startup and prepended to every API call as the system parameter. Never sent from the client.
+Anthropic SDK call
+Use @anthropic-ai/sdk on the server. Initialise with process.env.ANTHROPIC_API_KEY. Pass the full message history plus max_tokens and the model identifier.
+SSE streaming
+Set Content-Type: text/event-stream, Cache-Control: no-cache. Write each delta token as a data: {delta} event. Send data: [DONE] on stream completion. Send data: {error} on failure.
+Error handling
+Catch Anthropic SDK errors (rate limit, timeout, invalid request). Send a structured error event to the client. Log error details server-side. Never expose raw SDK error messages to the browser.
+CORS
+For MVP (localhost), configure CORS to allow the local frontend origin only. Production deploy tightens this to the specific deployment domain.
+Environment
+API key and model ID loaded from .env (dotenv). No hardcoded credentials anywhere in source.
+
+3. Data Flows
+3.1  Happy-Path Message Flow
+
+  Manager types message → presses Enter
+        │
+        ▼
+  [MessageComposer]  Appends manager message to messages[]
+        │            Sets streamActive = true
+        │            Appends pending agent message bubble
+        ▼
+  [StreamConsumer]  POST /api/chat
+        │           Body: { messages: [{role, content}, ...] }  ← full history
+        │
+        │  ──── NETWORK ────
+        ▼
+  [Server: /api/chat]  Validate body
+        │              Build API payload:
+        │              {
+        │                model: 'claude-sonnet-4-6',
+        │                system: <FE-SENIOR-01 prompt>,
+        │                messages: [...client messages],
+        │                max_tokens: 4096,
+        │                stream: true
+        │              }
+        │              Call Anthropic SDK .stream()
+        │
+        │  ──── NETWORK ────
+        ▼
+  [Anthropic API]   Returns SSE stream of content_block_delta events
+        │
+        │  ──── NETWORK ────
+        ▼
+  [Server]          Receives delta tokens, re-emits as:
+        │           data: {"type":"delta","text":"..."}
+        │           ...repeated per token...
+        │           data: {"type":"done"}
+        │
+        │  ──── NETWORK ────
+        ▼
+  [StreamConsumer]  Reads event stream
+        │           Appends each delta to the pending agent message buffer
+        │           On 'done': finalises message, sets streamActive = false
+        ▼
+  [ChatThread]      Re-renders with completed agent message
+  [TransparencyPanel] Parses TRANSPARENCY_START...TRANSPARENCY_END block
+                      Renders reasoning / tasks / assumptions sections
+
+3.2  Error Flow
+
+  SCENARIO A: Network failure mid-stream
+        │
+        ▼
+  [StreamConsumer]  fetch() rejects / SSE connection drops
+        │           Partial buffer preserved in message state
+        │           Appends error sentinel to agent message:
+        │           { type: 'error', message: 'Connection lost. Partial response shown.' }
+        ▼
+  [MessageBubble]   Renders partial content + error notice + Retry button
+                    Retry re-sends the last manager message
+
+  SCENARIO B: Anthropic API error (rate limit / timeout)
+        │
+        ▼
+  [Server]          Catches SDK error, writes:
+        │           data: {"type":"error","code":"rate_limit","message":"..."}
+        │           Closes SSE connection
+        ▼
+  [StreamConsumer]  Reads error event, surfaces to SessionController
+        ▼
+  [MessageBubble]   Renders error state — no partial content — with Retry button
+
+  SCENARIO C: Context window approaching limit
+        │
+        ▼
+  [Server]          Token count checked after each call.
+        │           If total_tokens > (context_limit - 1000), adds warning header
+        │           X-Context-Warning: near_limit
+        ▼
+  [SessionController] Displays inline warning banner in ChatThread:
+                    'Session context is nearly full. Start a new session to continue.'
+
+4. Technology Stack
+All technology choices are constrained to what is needed for the MVP acceptance criteria. No framework or library is included speculatively for future phases.
+
+4.1  Frontend
+Technology
+Version / Notes
+React
+v18. Concurrent features used for streaming UI updates (useTransition for non-blocking token appends).
+TypeScript
+Strict mode. All component props and state types explicitly defined. No implicit any.
+Vite
+Build tool and dev server. Fast HMR for development. Produces optimised static bundle for production.
+Tailwind CSS
+Utility-first CSS. Single source of truth for design tokens (colours, spacing, typography). No CSS-in-JS runtime cost.
+react-markdown
+Markdown rendering in agent message bubbles. Configured with rehype-sanitize to prevent XSS.
+react-syntax-highlighter
+Syntax highlighting for fenced code blocks. Prism engine with a light theme. Loaded lazily — not in the initial bundle.
+Zustand
+Lightweight state management for session state (messages array, stream state, phase state). Chosen over Redux for minimal boilerplate at MVP scale.
+No routing library
+Single-page, single route. React Router not included in MVP.
+
+4.2  Backend
+Technology
+Version / Notes
+Node.js
+v20 LTS. Runtime for the API server.
+Express
+v4. Minimal HTTP server. Handles POST /api/chat, CORS, and error middleware. No ORM, no session middleware, no auth middleware.
+@anthropic-ai/sdk
+Official Anthropic Node SDK. Used for streaming API calls. API key sourced from environment only.
+dotenv
+Loads .env in development. Production uses environment variables directly (no dotenv in prod bundle).
+zod
+Request body validation schema. Validates the messages array shape before the API is called.
+No database
+MVP has no persistence layer. No SQLite, no Redis, no file system writes.
+No auth middleware
+MVP targets localhost / internal access. Authentication is explicitly out of scope.
+
+4.3  Tooling & Infrastructure
+Tool
+Purpose
+ESLint + Prettier
+Code style enforcement. Airbnb ruleset. Runs in CI — PRs that fail lint do not merge.
+Vitest
+Unit and integration tests for React components and server utilities. Coverage threshold: 70% for MVP.
+Playwright
+End-to-end tests for the critical path: send message → streaming response → transparency panel renders.
+Docker
+Single Dockerfile packages both frontend (static) and backend (Node) for consistent local and deployment environments.
+GitHub Actions
+CI pipeline: lint → type-check → unit tests → e2e tests → secret scan → build. All stages must pass before merge.
+truffleHog / gitleaks
+Automated secret scanning on every CI run and git commit. Fails build if any credential pattern is detected.
+
+5. System Prompt Architecture
+The system prompt is the specification that defines the FE-SENIOR-01 persona. It is a first-class engineering artifact — version-controlled, reviewed, and tested like code. It lives in the server-side codebase only.
+
+5.1  Prompt Structure
+# FE-SENIOR-01 — Senior Frontend Developer
+
+## Identity
+You are a Senior Frontend Developer with 8+ years of professional experience.
+Stack: React 18, TypeScript (strict), Tailwind CSS, Vite, Vitest, Playwright.
+You communicate as a professional engineering peer: precise, direct, no unnecessary hedging.
+
+## Process Rules  (non-negotiable)
+1. Before writing any code, state a numbered task decomposition.
+2. Every response involving task work MUST include a TRANSPARENCY block.
+3. Explicitly state every assumption made when requirements are ambiguous.
+4. Flag risks and trade-offs when materially relevant.
+5. Never produce partial code silently — state what is done and what remains.
+6. Never use sycophantic openers. Begin responses with substance.
+
+## Output Structure Contract
+For task responses, your output MUST have this structure:
+
+  [Your primary response — explanation, code, decisions]
+
+  TRANSPARENCY_START
+  REASONING: [2-4 sentences explaining your approach]
+  TASKS: [{"id":1,"description":"...","status":"done|in_progress|pending"}]
+  ASSUMPTIONS: [bulleted list, or 'None']
+  TRANSPARENCY_END
+
+For conversational responses (no task work), omit the TRANSPARENCY block entirely.
+
+Prompt Version Control
+The system prompt file (server/prompts/fe-senior-01.txt) is version-controlled in Git. Changes require a pull request with product owner review. The active prompt version is logged with each API call for debugging and regression analysis.
+
+5.2  Transparency Block Parsing
+The client-side TransparencyPanel component parses the TRANSPARENCY_START...TRANSPARENCY_END block from the completed agent response string. Parsing happens once, after the stream completes — not during streaming.
+
+// Pseudocode — TransparencyParser.ts
+
+function parseTransparency(rawResponse: string): TransparencyData | null {
+  const match = rawResponse.match(
+    /TRANSPARENCY_START\n([\s\S]*?)\nTRANSPARENCY_END/
+  );
+  if (!match) return null;  // conversational response — no panel
+
+  const block = match[1];
+
+  const reasoning = extract(block, 'REASONING:');
+  const tasksJson = extract(block, 'TASKS:');
+  const assumptions = extract(block, 'ASSUMPTIONS:');
+
+  return {
+    reasoning,
+    tasks: JSON.parse(tasksJson),  // [{id, description, status}]
+    assumptions
+  };
+}
+
+// The raw TRANSPARENCY block is stripped from the displayed response.
+// displayContent = rawResponse.split('TRANSPARENCY_START')[0].trim()
+
+6. Security Model
+The security model for MVP has two non-negotiable requirements: keep the API key on the server, and sanitise all rendered user content. Everything else is defence-in-depth.
+
+6.1  API Key Isolation
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  BROWSER                                                            │
+  │                                                                     │
+  │  Client bundle contains:  React app, Markdown renderer, state mgmt  │
+  │  Client bundle does NOT contain: API key, model name, system prompt │
+  │                                                                     │
+  │  Network requests from browser: POST /api/chat  (to own server)    │
+  │  NO direct calls to api.anthropic.com from browser                 │
+  └──────────────────────────────────────────────────────────────────── ┘
+                              │
+                              │  messages[] only — no credentials
+                              ▼
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  SERVER                                                             │
+  │                                                                     │
+  │  process.env.ANTHROPIC_API_KEY  ←  set in deployment environment   │
+  │  Never written to disk, never logged, never sent to client          │
+  │                                                                     │
+  │  SDK initialised server-side:  new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })│
+  └──────────────────────────────────────────────────────────────────── ┘
+
+6.2  Security Controls Summary
+Control
+Implementation
+API key isolation
+Key exists only in server process.env. Loaded from deployment environment (not .env in production). Absent from all client-side assets.
+Secret scanning
+truffleHog runs on every CI push and pull request. Build fails on any credential pattern match. Pre-commit hook mirrors this check locally.
+XSS prevention
+User input rendered as plain text only — no Markdown parsing of manager messages. Agent Markdown rendered via react-markdown with rehype-sanitize plugin configured to allowlist safe HTML only. script, iframe, object, embed tags blocked.
+Request validation
+Server validates all incoming POST body shapes with zod before processing. Invalid payloads return HTTP 400 with no downstream API call.
+CORS
+Express CORS middleware allows only the explicit frontend origin. Wildcard (*) is never used.
+HTTPS
+All traffic in deployment is HTTPS. HTTP is redirected at the load balancer layer.
+No sensitive data in logs
+Server logs request timestamps and response token counts only. Message content is not logged. API key is never logged.
+Dependency audit
+npm audit runs in CI. High/critical vulnerabilities block merge.
+
+7. Frontend State Management
+State is divided into three distinct domains, each managed independently. This separation is intentional — it mirrors the logical boundaries defined in the MVP PRD and prevents accidental coupling between concerns.
+
+7.1  State Domains
+// Session State (Zustand store) — persists for the browser session
+interface SessionState {
+  messages: Message[];            // Full conversation history
+  streamActive: boolean;          // True while SSE stream is in flight
+  contextWarning: boolean;        // True when near context window limit
+  startNewSession: () => void;    // Clears messages[], resets flags
+}
+
+// Stream State (local to StreamConsumer) — ephemeral, per-request
+interface StreamState {
+  buffer: string;                 // Accumulating token buffer
+  phase: 'idle'|'thinking'|'streaming'|'done'|'error';
+  error: StreamError | null;
+}
+
+// UI State (local to components) — presentational only
+// e.g. transparencyOpen: boolean — per MessageBubble
+// e.g. composerHeight: number — in MessageComposer
+
+7.2  Message Data Model
+interface Message {
+  id: string;                     // uuid — stable across re-renders
+  role: 'user' | 'assistant';
+  content: string;                // Raw content (includes TRANSPARENCY block)
+  displayContent: string;         // Content with TRANSPARENCY block stripped
+  transparency: TransparencyData | null;  // Parsed panel data
+  status: 'complete' | 'streaming' | 'error';
+  timestamp: number;
+}
+
+interface TransparencyData {
+  reasoning: string;
+  tasks: Array<{
+    id: number;
+    description: string;
+    status: 'done' | 'in_progress' | 'pending';
+  }>;
+  assumptions: string;            // Raw text; rendered as bulleted list
+}
+
+8. Streaming Implementation
+Streaming is the most technically intricate part of the MVP. Getting it wrong produces either a blank screen followed by a sudden full response, or a janky, frame-dropping render. The implementation must be deliberate.
+
+8.1  Server-Side SSE Emission
+// server/routes/chat.ts (Express handler sketch)
+
+app.post('/api/chat', async (req, res) => {
+  const { messages } = req.body;  // validated by zod middleware
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  try {
+    const stream = await anthropic.messages.stream({
+      model: process.env.MODEL_ID,
+      system: systemPrompt,
+      messages,
+      max_tokens: 4096,
+    });
+
+    for await (const chunk of stream) {
+      if (chunk.type === 'content_block_delta') {
+        res.write(`data: ${JSON.stringify({ type:'delta', text: chunk.delta.text })}\n\n`);
+      }
+    }
+    res.write('data: {"type":"done"}\n\n');
+  } catch (err) {
+    res.write(`data: ${JSON.stringify({ type:'error', message: sanitize(err) })}\n\n`);
+  } finally {
+    res.end();
+  }
+});
+
+8.2  Client-Side Stream Consumption
+// client/StreamConsumer.ts (sketch)
+
+async function consumeStream(messages: Message[], onDelta: (t: string) => void,
+                             onDone: () => void, onError: (e: string) => void) {
+  const response = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages }),
+  });
+
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    const lines = decoder.decode(value).split('\n');
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const event = JSON.parse(line.slice(6));
+      if (event.type === 'delta') onDelta(event.text);
+      if (event.type === 'done')  onDone();
+      if (event.type === 'error') onError(event.message);
+    }
+  }
+}
+
+// React integration: onDelta calls flushSync-wrapped setState
+// to ensure each token renders immediately without batching delay.
+
+9. Key Design Decisions
+The following decisions have meaningful architectural consequences. Each was deliberately chosen over a viable alternative. Future engineers changing these decisions should understand the trade-offs involved.
+
+Decision
+Chosen
+Rejected Alternative
+Rationale
+API transport
+SSE over fetch()
+WebSocket
+SSE is unidirectional (server → client), which is exactly what streaming token delivery requires. No persistent connection overhead. Works with any standard HTTP load balancer without WebSocket upgrade support.
+Frontend state
+Zustand
+Redux Toolkit
+Redux is significantly more boilerplate for a single-domain state problem. Zustand provides equivalent guarantees with a smaller API surface. Can be replaced if the state model grows substantially in Phase 2.
+Server framework
+Express
+Fastify / Hono
+Express is the lowest-friction choice for the team. The server has one route. Performance difference is irrelevant at MVP load. Switching costs are low if needed.
+Markdown rendering
+react-markdown + rehype-sanitize
+dangerouslySetInnerHTML + DOMPurify
+react-markdown produces a React component tree (not raw HTML), making sanitisation easier to reason about and test. rehype-sanitize is purpose-built for this pipeline.
+Transparency parsing
+Client-side, post-stream
+Server-side extraction
+Keeping parsing on the client avoids adding server complexity. The TRANSPARENCY delimiters are explicit and parse reliably. If the output contract changes, only the client parser needs updating.
+Session state
+In-memory (React/Zustand)
+localStorage / sessionStorage
+The MVP PRD explicitly accepts page-reload data loss. In-memory state is simpler, has no serialisation concerns, and avoids storage API inconsistencies across browsers.
+CSS approach
+Tailwind utility classes
+CSS Modules / styled-components
+Tailwind eliminates the context-switching between component files and style files. Design tokens are centralised in tailwind.config.ts. Zero runtime CSS overhead.
+
+10. Deployment Topology
+MVP targets a single-service deployment. The React SPA is served as static assets by the same Node.js process that handles the API route. This simplifies the deployment to a single container with no CDN, no separate static host, and no reverse proxy required.
+
+10.1  Docker Container
+# Build stage: compile React SPA
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build         # Vite → dist/
+
+# Runtime stage: Node server serves static + API
+FROM node:20-alpine AS runtime
+WORKDIR /app
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/server ./server
+COPY --from=builder /app/package*.json ./
+RUN npm ci --omit=dev
+
+# Express serves dist/ as static, /api routes to handler
+EXPOSE 3000
+CMD ["node", "server/index.js"]
+
+10.2  Environment Variables
+Variable
+Description
+ANTHROPIC_API_KEY
+Required. Anthropic API key. Injected at runtime by deployment platform. Never in source or image layers.
+MODEL_ID
+Required. claude-sonnet-4-6. Externalised to allow model version updates without a code deploy.
+PORT
+Optional. Defaults to 3000. The port Express binds to.
+ALLOWED_ORIGIN
+Required in production. The exact frontend origin for CORS. e.g. https://your-domain.com
+NODE_ENV
+production in deployed environments. Controls dotenv loading, error verbosity, and log level.
+
+  MVP Deployment (Single Container)
+
+  ┌────────────────────────────────────────────────────────┐
+  │  Docker Container  (port 3000)                         │
+  │                                                        │
+  │  Node.js Express Server                                │
+  │    ├── GET  /*          → serve dist/ (React SPA)      │
+  │    └── POST /api/chat   → SSE proxy to Anthropic API   │
+  │                                                        │
+  │  Environment (injected at runtime, not in image):      │
+  │    ANTHROPIC_API_KEY, MODEL_ID, ALLOWED_ORIGIN         │
+  └────────────────────────────────────────────────────────┘
+                          │
+              HTTPS to api.anthropic.com
+
+  Suitable deployment targets:
+    • Railway / Render / Fly.io  (Docker-native PaaS)
+    • AWS ECS Fargate  (single task definition)
+    • Local Docker (docker run -e ANTHROPIC_API_KEY=sk-... -p 3000:3000)
+
+11. Technical Risks & Mitigations
+Risk
+Likelihood
+Impact
+Mitigation
+Transparency block parsing fails if model deviates from output contract
+Medium
+High
+E2E tests assert the transparency panel renders on every test-case message. CI fails if parsing breaks. System prompt includes explicit format examples to anchor the model.
+Streaming SSE connection drops on mobile / flaky networks
+Medium
+Medium
+Partial content preserved in message state. Retry button visible. Connection timeout handled gracefully — not a silent freeze.
+Context window exhaustion mid-conversation
+Medium
+Medium
+Token count tracked server-side. Warning displayed at 80% capacity. New Session action clears context. MVP supports up to ~50 messages before warning triggers.
+react-syntax-highlighter increases initial bundle size significantly
+Low
+Low
+Component loaded lazily (React.lazy). Code highlighting only activates when a code block is in the viewport. Initial load unaffected.
+Anthropic API rate limiting during demo / load testing
+Low
+High
+Exponential backoff implemented in the server error handler. Error state surfaces to user with a retry action. Rate limit errors distinguished from other errors in the UX.
+XSS via Markdown rendering edge case
+Low
+High
+rehype-sanitize uses a strict allowlist. Test suite includes known XSS payload strings as fixtures. Security review required before any changes to sanitiser config.
+
+12. Forward Compatibility
+The MVP architecture is deliberately thin, but it is not a throwaway. The following Phase 2+ capabilities can be added without restructuring the foundation.
+
+Phase 2+ Capability
+How MVP Architecture Enables It
+Multiple engineer profiles
+The system prompt is already externalised to a file and loaded by ID. Adding a profile registry and a server endpoint to switch prompts requires no architectural change.
+Session persistence
+The Zustand messages[] store can be serialised to localStorage or a server-side session store by wrapping the existing state actions. The data model is already clean JSON.
+Authentication
+Express middleware is the natural insertion point. Adding Passport.js or a JWT middleware layer requires no changes to the chat route or frontend state model.
+Tool execution (Phase 3)
+The server /api/chat handler can be extended to process tool_use events from the model and execute registered tools before continuing the stream. The SSE protocol already supports additional event types.
+Real-time task status updates
+The SSE stream can emit structured task_update events (in addition to delta events) when tool execution produces intermediate results. The client StreamConsumer handles this by type-switching on event.type.
+Multi-user / team features
+The session state model maps cleanly to a server-side session document. Adding a user ID and persisting to a database (Postgres or MongoDB) is additive, not structural.
+

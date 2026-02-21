@@ -1,0 +1,399 @@
+MINIMUM VIABLE PRODUCT
+
+Agentic SE Platform
+Requirements Document
+
+Defines the minimum set of capabilities required to ship a working, usable version
+of the Agentic Software Engineer chat interface to internal stakeholders.
+
+VERSION
+MVP 1.0
+STATUS
+Ready for Build
+DATE
+February 2026
+SCOPE GATE
+Strictly MVP
+THIS DOCUMENT DEFINES WHAT IS IN SCOPE. EVERYTHING ELSE IS OUT.
+
+1. What This MVP Is
+MVP Definition
+The MVP is the smallest possible version of the Agentic SE Platform that demonstrates the core value proposition: an engineering manager can have a structured, transparent conversation with an AI frontend developer that behaves and communicates like a professional engineer — not a chatbot.
+
+Shipping the MVP validates the product concept and the foundational technical architecture without building anything that is not immediately necessary.
+
+The MVP consists of exactly three things working together well:
+
+	•	A chat interface where a manager can direct an AI engineer with natural language instructions.
+	•	An AI engineer persona (FE-SENIOR-01) that responds with engineering professionalism, decomposes tasks explicitly, and makes its reasoning visible.
+	•	A server-side proxy that keeps API credentials secure and delivers responses as a real-time stream.
+
+Nothing else. Every feature not essential to experiencing those three things is deferred.
+
+2. Scope Decision Framework
+Each potential feature was evaluated against a single question:
+
+Scope Test
+"Can the engineering manager experience the core value proposition — directing a professional AI engineer with visible reasoning — WITHOUT this feature?"
+
+If YES → Out of scope for MVP.
+If NO  → In scope for MVP.
+
+Applying this test produces the following MVP boundary:
+
+Feature
+In MVP?
+Rationale
+Chat input + send action
+✅ YES
+Without this there is no interaction at all.
+Streaming agent response
+✅ YES
+Batched response destroys the engineering interaction feel — a critical experience requirement.
+Markdown + code block rendering
+✅ YES
+Code is the primary output of a software engineer. Unrendered code makes output unreadable.
+Engineer profile header
+✅ YES
+Establishes the persona context for the manager; without it the interaction feels like a generic chatbot.
+Transparent reasoning (thought panel)
+✅ YES
+Core differentiator. Without visible reasoning, the product is indistinguishable from ChatGPT.
+Task decomposition display
+✅ YES
+Demonstrates the BEI process. Without it the agent's engineering discipline is invisible.
+Server-side API proxy
+✅ YES
+Security non-negotiable. No API key exposure to client under any circumstance.
+In-session conversation history
+✅ YES
+Without this, each message is contextless — the agent cannot function as a persistent collaborator.
+Session persistence across reloads
+❌ NO
+Refreshing the browser is an acceptable limitation for MVP; adds session storage complexity.
+Profile selector / switcher
+❌ NO
+Phase 1 has one profile. A selector with nothing to select is waste.
+Session export / transcript download
+❌ NO
+Nice-to-have; does not affect whether the core loop can be experienced.
+File / code attachment upload
+❌ NO
+Useful but not required to direct the agent on a fresh task.
+Task review / approve workflow
+❌ NO
+Manager can communicate approval via chat message. Formal workflow is Phase 2.
+Session summary panel
+❌ NO
+The conversation thread itself provides this at MVP scale.
+Authentication / user accounts
+❌ NO
+Internal access / localhost for MVP. Auth adds significant scope with no product value until multi-user.
+Test run / linter output display
+❌ NO
+Requires tool execution infrastructure. Not part of chat-only MVP.
+
+3. Functional Requirements
+All requirements in this section are P0 — Critical. There are no P1 or P2 requirements in the MVP. If a requirement is not listed here, it is out of scope.
+
+3.1  Chat Interface
+ID
+Requirement
+Acceptance Test
+FR-01
+The interface shall render a persistent, scrollable conversation thread displaying a chronological sequence of manager and agent messages.
+Thread visible with at least one sent message and one agent response rendered on screen.
+FR-02
+Manager messages shall appear right-aligned with a visually distinct background. Agent messages shall appear left-aligned in a wider column.
+Visual distinction is immediately apparent to an observer with no instruction.
+FR-03
+The message composer shall be a fixed-bottom text input area supporting multi-line text entry (Shift+Enter for new line, Enter to send).
+Shift+Enter inserts a line break. Enter submits. Tab does not break keyboard nav.
+FR-04
+The send action shall be available both via the Enter key and an explicit send button.
+Both methods submit the same message content.
+FR-05
+While the agent is generating a response, the input shall remain active and editable. The conversation thread shall display a visible in-progress indicator.
+User can type a follow-up while a response is streaming. Indicator is visible without scrolling.
+FR-06
+Agent responses shall stream to the UI progressively as tokens are received — not appear as a single block after completion.
+Text visibly renders incrementally. No blank screen then sudden full response.
+
+3.2  Content Rendering
+ID
+Requirement
+Acceptance Test
+FR-07
+Agent messages shall render Markdown including: headings, bold, italic, inline code, and fenced code blocks.
+All standard Markdown elements render correctly in a sample agent response.
+FR-08
+Fenced code blocks shall apply syntax highlighting appropriate to the declared language (e.g., tsx, css, json, bash).
+A TypeScript code block has correct token colouring. An unsupported language renders in plain monospace without error.
+FR-09
+Each code block shall include a one-click copy action that copies the block content to the clipboard.
+Clicking the copy control places the raw code (no markdown fences) on the clipboard.
+FR-10
+Manager message content shall be treated as plain text — no Markdown rendering, no code execution.
+Bold asterisks in a manager message appear as literal asterisks.
+
+3.3  Engineer Profile Header
+ID
+Requirement
+Acceptance Test
+FR-11
+A fixed header shall display above the conversation thread showing: the engineer's name, role title, and a short skills summary.
+Header is visible at all scroll positions. All three data points are present.
+FR-12
+The header shall display the engineer's current phase state: READY, THINKING, BUILDING, or RESPONDING.
+Phase label changes from READY to THINKING within 200ms of message submission. Returns to READY when streaming completes.
+FR-13
+The profile header shall be hard-coded to FE-SENIOR-01 for MVP. No selection, switching, or editing is provided.
+No profile selection UI exists anywhere in the interface.
+
+3.4  Transparency Panel
+This is the most critical differentiator of the product. Every agent response involving reasoning or task work must include it. It must never be absent or hidden by default in a way that creates confusion.
+
+ID
+Requirement
+Acceptance Test
+FR-14
+Every agent response that involves task work shall include a Transparency Panel rendered below the response content. The panel shall be collapsed by default.
+An agent response to a coding task has a visible disclosure toggle. Panel is closed by default.
+FR-15
+The Transparency Panel shall contain three distinct sections rendered in this order: (1) Reasoning Summary, (2) Task Breakdown, (3) Assumptions.
+All three sections are present and labelled when the panel is expanded.
+FR-16
+Reasoning Summary shall be a brief plain-English explanation (2–4 sentences) of the approach the agent took, written by the agent as part of its structured output.
+The summary is in plain English. It does not contain raw JSON or prompt artifacts.
+FR-17
+Task Breakdown shall render as a checklist of discrete numbered steps with a completion status (pending / in-progress / done) for each step.
+A task with 4 steps shows 4 checklist items. Completed steps are visually distinct from pending ones.
+FR-18
+Assumptions shall be a bulleted list of any conditions or decisions the agent made that were not explicitly specified by the manager.
+If the agent chose a specific library or pattern not requested, it appears in the Assumptions list.
+FR-19
+The panel shall be expandable and collapsible via click or keyboard interaction without affecting the rest of the conversation thread.
+Toggling the panel does not cause the thread to reflow or scroll jump.
+FR-20
+Agent responses that are purely conversational (no task work) — such as clarifying questions or acknowledgements — shall not include a Transparency Panel.
+A response of 'Sure, what would you like me to build?' has no transparency toggle.
+
+3.5  Conversation Context
+ID
+Requirement
+Acceptance Test
+FR-21
+The full conversation history from the current session shall be included in every API call to maintain agent context.
+An agent references a decision made three messages earlier correctly without being reminded.
+FR-22
+The system prompt defining the FE-SENIOR-01 persona shall be injected at the start of every conversation turn on the server.
+The agent maintains its frontend developer persona and communication style consistently throughout a session.
+FR-23
+When the conversation context approaches the model's context window limit, the system shall display a visible warning to the manager and offer a 'Start New Session' action.
+Warning appears before the context window is exceeded. The start new session action clears state correctly.
+
+3.6  Session Management
+ID
+Requirement
+Acceptance Test
+FR-24
+A 'New Session' action shall be accessible from the header, clearing all conversation history and resetting the agent context.
+After triggering New Session, the conversation thread is empty and the agent has no memory of prior messages.
+FR-25
+Conversation history shall persist for the duration of the browser session (tab open). A page reload shall clear state with no recovery required.
+This is an explicit MVP limitation. No persistence requirement beyond in-memory session state.
+
+4. Non-Functional Requirements
+The following NFRs are binding for MVP. They are a floor, not a target.
+
+4.1  Performance
+ID
+Requirement
+Acceptance Test
+NFR-01
+Time to first streaming token shall be under 2 seconds from message send on a standard broadband connection.
+Measured with browser DevTools Network tab. P95 of 10 test messages under 2s.
+NFR-02
+The UI shall remain fully interactive (input focusable, scrollable) during active response streaming.
+User can scroll, click, and type while a response is rendering.
+NFR-03
+The application shall render correctly and without performance degradation with up to 50 messages in the thread.
+A session with 50 messages scrolls and renders smoothly. This is the MVP session cap.
+
+4.2  Security
+ID
+Requirement
+Acceptance Test
+NFR-04
+The Anthropic API key shall exist only in the server-side environment. It shall not be present in any client-side bundle, network response, or source map.
+Automated secret scanning on the built client bundle returns zero results. Browser network inspector shows no API key in any request or response.
+NFR-05
+All user input rendered in the conversation thread shall be sanitised to prevent XSS. Markdown rendering shall not execute arbitrary scripts.
+Submitting a message containing a script tag renders it as escaped text, not as an executed script.
+
+4.3  Reliability
+ID
+Requirement
+Acceptance Test
+NFR-06
+If the API call fails or times out, the interface shall display a clear error message in the conversation thread with a retry action. It shall not silently fail or freeze.
+Simulating a network failure (DevTools offline mode) shows an error message with a retry button within 500ms.
+NFR-07
+A streaming response interrupted mid-stream shall display the partial content received along with a clear error notice and a retry action.
+Cutting the network connection mid-stream leaves the partial text visible with an error state — not a blank bubble.
+
+4.4  Accessibility
+ID
+Requirement
+Acceptance Test
+NFR-08
+The interface shall achieve a Lighthouse accessibility score of 85 or above on the production build.
+Run Lighthouse against the production URL. Score meets or exceeds 85.
+NFR-09
+All interactive elements shall be reachable and operable via keyboard navigation alone.
+Tab through the full interface without using a mouse. Every interactive element is reachable and activatable.
+NFR-10
+New messages appended to the conversation thread shall be announced to screen readers via an ARIA live region.
+Using VoiceOver or NVDA, new messages are read aloud as they appear.
+
+5. Agent Persona Specification (FE-SENIOR-01)
+The system prompt is a first-class product artifact. The engineering team shall implement the persona to the following specification. Deviation requires product sign-off.
+
+5.1  Identity
+	•	Role: Senior Frontend Developer with 8+ years of professional experience.
+	•	Specialisation: React, TypeScript, component architecture, web performance, accessibility.
+	•	Stack defaults: React 18, TypeScript (strict mode), Tailwind CSS, Vite, Vitest.
+	•	Communication register: Professional engineering peer — concise, precise, no unnecessary hedging, no apologies for doing the job.
+
+5.2  Mandatory Behavioural Rules
+	•	Before writing any code, the agent shall state a numbered task decomposition and wait for implicit or explicit approval.
+	•	Every response involving task work shall produce a Transparency Panel structured output block (see Section 3.4).
+	•	The agent shall explicitly state any assumption made when requirements are ambiguous — never silently assume.
+	•	The agent shall proactively flag risks, trade-offs, or better alternatives when they are meaningfully relevant.
+	•	The agent shall never produce partial code silently. If it cannot complete a task in one response, it shall state what it has done and what remains.
+	•	The agent shall not use sycophantic phrases ('Great question!', 'Certainly!', 'Of course!'). Responses start with substance.
+
+5.3  Output Structure Contract
+When performing task work, every agent response MUST include the following structured sections. The UI parses these sections — they cannot be omitted or freeformed.
+
+Required Output Sections (Task Responses)
+1. RESPONSE — The primary content: explanation, code, or answer. Rendered as Markdown.
+
+2. TRANSPARENCY_START ... TRANSPARENCY_END — A delimited block containing:
+   • REASONING: 2-4 sentences of plain-English approach explanation.
+   • TASKS: JSON array — [{"id": 1, "description": "...", "status": "done|in_progress|pending"}]
+   • ASSUMPTIONS: Plain text bulleted list, or "None" if none were made.
+
+Conversational responses (no task work) omit the TRANSPARENCY block entirely.
+
+6. Explicitly Out of Scope
+The following items are formally out of scope for MVP. They are planned for future phases. Any implementation of these items during the MVP sprint must be approved by the product owner as a scope change.
+
+Feature / Capability
+Reason Deferred
+Profile selector / multiple engineer profiles
+Phase 2. MVP ships with one hard-coded profile.
+Session persistence across browser reloads
+Phase 2. In-memory session is sufficient to validate the core loop.
+Session export / transcript download
+Phase 2. Not required to experience the core value proposition.
+File / code attachment upload
+Phase 2. Manager directs the agent via natural language for MVP.
+Formal task review and approval workflow
+Phase 2. Manager communicates approval via chat message.
+Test runner / linter output in transparency panel
+Phase 3. Requires tool execution infrastructure not in MVP scope.
+Code diff view
+Phase 3. Out of scope until file system integration exists.
+Authentication and user accounts
+Phase 2+. MVP targets internal / localhost access only.
+Usage analytics and session metrics
+Phase 2+. No instrumentation required for MVP.
+Dark/light theme toggle
+Post-MVP polish. Ship one theme consistently.
+Mobile responsive layout
+Post-MVP. Desktop browser is the target environment for MVP.
+Undo / edit sent message
+Post-MVP. Managing conversation via follow-up messages is acceptable.
+Copy entire agent response
+Post-MVP. Per-code-block copy covers the primary use case.
+
+7. Recommended Build Plan
+This is a suggested sprint structure for a frontend engineer and a backend engineer working in parallel. Total target: 2 weeks to a demo-ready MVP.
+
+Sprint
+Deliverable
+Duration
+Exit Gate
+Sprint 1
+Days 1–3
+Server foundation: API proxy endpoint, system prompt injection, streaming SSE response, environment configuration, basic error handling.
+3 days
+Streaming response works from curl / Postman.
+Sprint 1
+Days 3–5
+Chat UI shell: layout (header + thread + composer), message send, hard-coded engineer profile header, in-session state management.
+2 days
+Message sends and a mocked response renders.
+Sprint 2
+Days 6–8
+Live integration: connect UI to streaming API, render streaming tokens progressively, Markdown + syntax highlighting, copy code action.
+3 days
+Full chat loop works end-to-end with real model.
+Sprint 2
+Days 8–10
+Transparency panel: parse structured output contract, render reasoning / task / assumptions sections, expand/collapse, phase state in header.
+3 days
+Transparency panel renders correctly for a coding task.
+Hardening
+Days 11–14
+Error states, context window warning, New Session action, accessibility pass, security audit (bundle scan), cross-browser testing, Lighthouse run.
+4 days
+All NFRs verified. MVP acceptance criteria met.
+
+8. MVP Acceptance Criteria
+The MVP is shippable when every item below is signed off by the product owner and QA. These are binary pass/fail checks — no partial credit.
+
+Sign-off Required
+All 12 criteria must be checked before the MVP demo. Any failing item is a ship-blocker.
+
+#
+Acceptance Criterion
+Status
+1
+The manager can type a message, send it, and receive a streaming response from the FE-SENIOR-01 persona.
+☐  Pending
+2
+The agent maintains its senior frontend developer character and communication style across 10 consecutive messages.
+☐  Pending
+3
+Every code-generation response includes a Transparency Panel with all three required sections (reasoning, tasks, assumptions).
+☐  Pending
+4
+The Transparency Panel is collapsed by default and expands/collapses cleanly via click and keyboard.
+☐  Pending
+5
+Task items in the panel accurately reflect the steps the agent described in its response.
+☐  Pending
+6
+Fenced code blocks render with syntax highlighting and a working copy action.
+☐  Pending
+7
+The engineer profile header displays the name, role, skills summary, and phase state — and the phase state updates correctly during a request cycle.
+☐  Pending
+8
+The New Session action clears all conversation history and resets agent context (verified by the agent having no knowledge of prior messages).
+☐  Pending
+9
+No Anthropic API key is present in any client-side asset — confirmed by automated secret scan.
+☐  Pending
+10
+Submitting a message containing a script tag does not execute JavaScript.
+☐  Pending
+11
+Simulating a network failure mid-stream leaves the partial response visible with an error state and a retry action.
+☐  Pending
+12
+Lighthouse accessibility audit on the production build scores 85 or above.
+☐  Pending
+

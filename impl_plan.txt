@@ -1,0 +1,830 @@
+DESIGN & IMPLEMENTATION PLAN
+
+Agentic SE Platform
+MVP
+
+8 steps. Each step ships a working, demonstrable result.
+
+1
+Scaffold
+2
+UI Shell
+3
+API Proxy
+4
+Live Chat
+5
+Rendering
+6
+Transparency
+7
+State/Errors
+8
+Hardening
+Every step has a defined working result that can be demonstrated before moving to the next. No step ends in a broken state.
+
+How This Plan Works
+This plan is structured as 8 sequential steps. Each step has a precise scope, a set of implementation tasks, and a defined working result — something you can run, click, and demonstrate before beginning the next step. The build never ends in a broken state between steps.
+
+Design Philosophy
+Every step is a vertical slice, not a horizontal layer. You are not building 'all the frontend first, then all the backend'. You are building thin end-to-end slices that grow the working application incrementally.
+
+If you have to stop after any step, you have a working (if limited) product. If you complete all 8 steps, you have a shippable MVP.
+
+Step
+What You Build  →  Working Result
+Step 1 — Scaffold
+Project structure, tooling, dev servers  →  Both servers run; hello world renders
+Step 2 — UI Shell
+Layout, profile header, thread, composer  →  Full static UI visible and navigable by keyboard
+Step 3 — API Proxy
+Express endpoint + SSE streaming  →  curl returns a streaming Claude response
+Step 4 — Live Chat
+Frontend connects to server stream  →  Type a message, watch tokens appear in real time
+Step 5 — Rich Rendering
+Markdown, syntax highlighting, code copy  →  Code responses are beautiful and copyable
+Step 6 — Transparency
+Parse + render transparency panel  →  Click any agent response to see reasoning + tasks
+Step 7 — Phase State & Errors
+Header phase indicator, error handling, retry  →  Header tracks THINKING/RESPONDING; errors are never silent
+Step 8 — Hardening
+Accessibility, security scan, tests, polish  →  Lighthouse 85+, zero secrets in bundle, MVP acceptance criteria all green
+
+Time Estimate
+Estimated total: 10–14 working days for a frontend + backend engineer pair. Each step is 1–2 days. Steps 3 and 4 can be developed in parallel by split-discipline pairing (backend on Step 3, frontend on Step 2) before joining at Step 4.
+
+1
+STEP
+Project Scaffold
+Monorepo structure, TypeScript, tooling, and both dev servers running
+⏱  1 day
+
+This step establishes the project structure and development environment. Its only output is two running servers and a hello world rendered in the browser. No features, no styling, no integration. Just the skeleton that everything else attaches to.
+
+1.1  Repository Structure
+agentic-se/
+├── client/                  # React SPA (Vite)
+│   ├── src/
+│   │   ├── main.tsx
+│   │   ├── App.tsx          # Root component — renders 'hello world' for now
+│   │   └── vite-env.d.ts
+│   ├── index.html
+│   ├── tsconfig.json        # strict: true
+│   ├── vite.config.ts       # Proxy /api → localhost:3001
+│   └── package.json
+├── server/
+│   ├── src/
+│   │   ├── index.ts         # Express bootstrap
+│   │   └── routes/
+│   │       └── health.ts    # GET /api/health → { status: 'ok' }
+│   ├── prompts/
+│   │   └── fe-senior-01.txt # System prompt file (stub for now)
+│   ├── tsconfig.json
+│   └── package.json
+├── .env.example             # ANTHROPIC_API_KEY=, MODEL_ID=, PORT=3001
+├── .gitignore               # node_modules, .env, dist
+├── .eslintrc.json
+└── package.json             # Root: workspaces + shared scripts
+
+1.2  Implementation Tasks
+	•	Initialise the monorepo with npm workspaces (or pnpm). One root package.json with scripts: dev, build, lint, test.
+	•	Scaffold the client with Vite React-TS template. Configure tsconfig strict mode. Install Tailwind CSS and run the init.
+	•	Configure Vite proxy: requests to /api/* forward to localhost:3001. This means the frontend never needs to know the server port.
+	•	Scaffold the server with Express and ts-node-dev. Install zod, dotenv, cors, @anthropic-ai/sdk (ready for Step 3 — not yet used).
+	•	Add .env.example with all required variables. Add .env to .gitignore.
+	•	Configure ESLint (Airbnb TS ruleset) and Prettier. Add pre-commit hook with husky + lint-staged.
+	•	Add a root dev script that starts both servers concurrently with concurrently.
+	•	Write a single health check route GET /api/health returning { status: 'ok', timestamp: Date.now() } and confirm it responds.
+
+1.3  Key Configurations
+// vite.config.ts — proxy /api to the Express server
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 3000,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      }
+    }
+  }
+});
+
+// server/src/index.ts — minimal Express bootstrap
+const app = express();
+app.use(cors({ origin: process.env.ALLOWED_ORIGIN || 'http://localhost:3000' }));
+app.use(express.json());
+app.use('/api', healthRouter);
+app.listen(process.env.PORT || 3001);
+
+✓  WORKING RESULT — What works at the end of this step
+	•	npm run dev starts both client (port 3000) and server (port 3001) with one command
+	•	Browser shows 'Hello World' (or Vite default) at localhost:3000
+	•	curl http://localhost:3001/api/health returns { "status": "ok" }
+	•	ESLint runs on save with zero errors on the scaffold files
+	•	TypeScript compiles with zero errors in strict mode on both client and server
+▶  HOW TO VERIFY
+Run: npm run dev  — both servers start without errors
+Open: http://localhost:3000  — page renders
+Run: curl http://localhost:3001/api/health  — JSON response returned
+Run: npm run lint  — zero errors
+
+2
+STEP
+UI Shell
+Static layout with all three zones rendered — no data, no API calls
+⏱  1–2 days
+
+Build the complete visual structure of the chat interface using hardcoded/static data. No API calls, no state management, no streaming. Just the layout, the component tree, and the design system foundation. When this step is done, the UI looks like a complete product — it just doesn't do anything yet.
+
+2.1  Component Tree
+client/src/
+├── components/
+│   ├── layout/
+│   │   └── AppShell.tsx         # Root layout: header + thread + composer
+│   ├── profile/
+│   │   └── ProfileHeader.tsx    # Engineer identity + phase badge
+│   ├── chat/
+│   │   ├── ChatThread.tsx       # Scrollable message list
+│   │   ├── MessageBubble.tsx    # Single message (user or agent)
+│   │   └── MessageComposer.tsx  # Fixed-bottom input + send button
+│   └── ui/
+│       └── PhaseBadge.tsx       # READY / THINKING / BUILDING / RESPONDING badge
+├── data/
+│   └── fixtures.ts              # Hardcoded sample messages for development
+├── types/
+│   └── index.ts                 # Message, TransparencyData, PhaseState types
+└── App.tsx                      # Renders AppShell with fixture data
+
+2.2  Layout Specification
+Zone
+Implementation Notes
+ProfileHeader
+Fixed top, full width, height 64px. Left: avatar circle (initials) + name + role title + skills chips. Right: PhaseBadge + session controls area (New Session button — wired in Step 7).
+ChatThread
+Fills remaining viewport height. overflow-y: auto. Messages list with gap between bubbles. User messages right-aligned, agent messages left-aligned with a max-width of 75%. Bottom of the list is the scroll anchor — autoscroll handled in Step 4.
+MessageBubble — User
+Rounded pill, branded background colour, right-aligned, plain text only (no Markdown). Timestamp shown on hover.
+MessageBubble — Agent
+White background, left-aligned, wider column. Contains: text content area (Markdown in Step 5), transparency toggle row below content (renders as a disabled placeholder in this step).
+MessageComposer
+Fixed bottom, full width. Contains: textarea (auto-grows to max 160px then scrolls), send button. Keyboard: Enter = send, Shift+Enter = new line. Uses hardcoded no-op handler for now.
+PhaseBadge
+Pill with icon + label. Four states: READY (grey), THINKING (amber), BUILDING (blue), RESPONDING (green). Colour must not be the only differentiator — icon required too.
+
+2.3  TypeScript Types — Define These First
+// client/src/types/index.ts
+
+export type PhaseState = 'ready' | 'thinking' | 'building' | 'responding';
+
+export interface TransparencyData {
+  reasoning: string;
+  tasks: Array<{ id: number; description: string; status: 'done' | 'in_progress' | 'pending' }>;
+  assumptions: string;
+}
+
+export interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;                 // raw (may contain TRANSPARENCY block)
+  displayContent: string;          // stripped of TRANSPARENCY block
+  transparency: TransparencyData | null;
+  status: 'complete' | 'streaming' | 'error';
+  timestamp: number;
+}
+
+2.4  Implementation Tasks
+	•	Define all types in types/index.ts before writing any component.
+	•	Create the three-zone AppShell with Tailwind. Use h-screen flex-col. ProfileHeader fixed, ChatThread grows to fill, MessageComposer fixed.
+	•	Build ProfileHeader with hardcoded FE-SENIOR-01 data. Wire up PhaseBadge with 'READY' state. Make the whole header keyboard-navigable.
+	•	Build ChatThread accepting a Message[] prop. Render fixture messages. No scroll behaviour yet.
+	•	Build MessageBubble with two visual variants (user / assistant). Agent bubble has a transparency toggle row at the bottom — renders as '▶ Show reasoning' but does nothing yet.
+	•	Build MessageComposer with Enter/Shift+Enter handling. Auto-grow textarea. Send button disabled when input is empty. Submit calls a no-op prop function.
+	•	Add fixture.ts with 4–6 representative sample messages including one with a long code block (raw string) to expose layout edge cases early.
+	•	Check the full UI in Firefox, Chrome, and Safari at 1280px width.
+
+✓  WORKING RESULT — What works at the end of this step
+	•	Full three-zone layout renders at localhost:3000 with no console errors
+	•	ProfileHeader shows FE-SENIOR-01 name, role, skills, and a READY badge
+	•	Fixture messages render in ChatThread — user messages right-aligned, agent messages left-aligned
+	•	MessageComposer accepts text input — Enter clears the input (no-op for now), Shift+Enter adds a newline
+	•	Tab key navigates through all interactive elements in logical order
+	•	Layout does not break on long messages or long code strings
+▶  HOW TO VERIFY
+Open localhost:3000 — full UI visible without any API call
+Resize browser to 1280px, 1440px, 1920px — no layout overflow
+Tab through entire UI — every button, input reachable
+Paste a 50-line code string into a fixture message — layout holds
+
+3
+STEP
+API Proxy & Streaming
+Express endpoint calls Claude and streams tokens — testable with curl
+⏱  1–2 days
+
+Build the server-side API endpoint that calls Claude and streams the response back as Server-Sent Events. This step is backend-only. The frontend is not touched. The endpoint is verified entirely with curl and a browser's EventSource API — no UI changes required.
+
+Security Gate — This Step Is the Security Boundary
+The API key is introduced to the codebase in this step. The following rules are non-negotiable:
+  • ANTHROPIC_API_KEY is only ever read from process.env
+  • It is never interpolated into a string that is returned to the client
+  • It is never logged
+  • .env is in .gitignore and verified absent from git history before this step merges
+
+3.1  Server File Structure
+server/src/
+├── index.ts               # Add chat router
+├── routes/
+│   ├── health.ts          # Unchanged
+│   └── chat.ts            # NEW — POST /api/chat SSE handler
+├── middleware/
+│   └── validateChat.ts    # NEW — zod schema validation
+├── services/
+│   └── anthropic.ts       # NEW — SDK wrapper, stream factory
+└── prompts/
+    └── fe-senior-01.txt   # NEW — full system prompt content
+
+3.2  System Prompt (fe-senior-01.txt)
+Write the full FE-SENIOR-01 system prompt in this step. It must include: identity/role definition, stack defaults, the 6 mandatory behaviour rules, and critically — the full output structure contract with the TRANSPARENCY_START/TRANSPARENCY_END delimiter format. Refer to the Architecture document Section 5.1 for the full specification.
+
+3.3  Chat Route Implementation
+// server/src/routes/chat.ts
+
+router.post('/', validateChat, async (req, res) => {
+  const { messages } = req.body;   // validated array of {role, content}
+
+  // Set SSE headers BEFORE any async work
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const emit = (event: object) =>
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+
+  try {
+    const stream = anthropic.messages.stream({
+      model: process.env.MODEL_ID!,
+      system: systemPrompt,           // loaded from file at startup
+      messages,
+      max_tokens: 4096,
+    });
+
+    for await (const chunk of stream) {
+      if (chunk.type === 'content_block_delta' &&
+          chunk.delta.type === 'text_delta') {
+        emit({ type: 'delta', text: chunk.delta.text });
+      }
+    }
+
+    const finalMsg = await stream.finalMessage();
+    emit({ type: 'done', usage: finalMsg.usage });
+
+  } catch (err: unknown) {
+    emit({ type: 'error', message: classifyError(err) });
+  } finally {
+    res.end();
+  }
+});
+
+3.4  Request Validation Schema
+// server/src/middleware/validateChat.ts
+import { z } from 'zod';
+
+const MessageSchema = z.object({
+  role: z.enum(['user', 'assistant']),
+  content: z.string().min(1).max(32000),
+});
+
+const ChatBodySchema = z.object({
+  messages: z.array(MessageSchema).min(1).max(200),
+});
+
+export const validateChat: RequestHandler = (req, res, next) => {
+  const result = ChatBodySchema.safeParse(req.body);
+  if (!result.success) {
+    return res.status(400).json({ error: result.error.flatten() });
+  }
+  req.body = result.data;
+  next();
+};
+
+✓  WORKING RESULT — What works at the end of this step
+	•	POST /api/chat with a valid messages array streams a real Claude response token by token
+	•	The response is in the FE-SENIOR-01 persona — not generic Claude
+	•	Sending a code request triggers a TRANSPARENCY block in the response
+	•	POST /api/chat with a malformed body returns HTTP 400 with a validation error
+	•	The ANTHROPIC_API_KEY is confirmed absent from all server response payloads
+▶  HOW TO VERIFY
+Run: curl -X POST http://localhost:3001/api/chat -H 'Content-Type: application/json' -d '{"messages":[{"role":"user","content":"Write a React button component"}]}' --no-buffer
+Watch tokens stream to the terminal in real time
+Confirm the response includes TRANSPARENCY_START...TRANSPARENCY_END
+Run the same request with an empty messages array — confirm HTTP 400
+grep the server bundle/source for the API key string — zero results
+
+4
+STEP
+Live Chat Integration
+Frontend connects to the streaming API — the core loop is alive
+⏱  1–2 days
+
+Connect the frontend to the server. Replace the no-op submit handler with a real stream consumer. This is the step where everything comes together for the first time — you type a message, press Enter, and watch the agent respond in real time with streaming tokens. When this step is complete, the core product value proposition is demonstrable.
+
+4.1  New Client Files
+client/src/
+├── store/
+│   └── session.ts           # NEW — Zustand store: messages[], streamActive, phase
+├── services/
+│   └── streamConsumer.ts    # NEW — SSE fetch + token reader
+└── hooks/
+    └── useChat.ts           # NEW — orchestrates send → stream → state updates
+
+4.2  Zustand Session Store
+// client/src/store/session.ts
+import { create } from 'zustand';
+
+interface SessionStore {
+  messages: Message[];
+  streamActive: boolean;
+  phase: PhaseState;
+  appendUserMessage: (content: string) => void;
+  appendAgentMessageStart: () => string;   // returns new message id
+  appendAgentDelta:  (id: string, delta: string) => void;
+  finaliseAgentMessage: (id: string) => void;
+  setAgentError: (id: string, msg: string) => void;
+  setPhase: (phase: PhaseState) => void;
+  startNewSession: () => void;
+}
+
+export const useSessionStore = create<SessionStore>((set, get) => ({
+  messages: [],
+  streamActive: false,
+  phase: 'ready',
+
+  appendUserMessage: (content) => set(s => ({
+    messages: [...s.messages, {
+      id: crypto.randomUUID(), role: 'user', content,
+      displayContent: content, transparency: null,
+      status: 'complete', timestamp: Date.now()
+    }]
+  })),
+
+  appendAgentMessageStart: () => {
+    const id = crypto.randomUUID();
+    set(s => ({ streamActive: true, messages: [...s.messages, {
+      id, role: 'assistant', content: '', displayContent: '',
+      transparency: null, status: 'streaming', timestamp: Date.now()
+    }]}));
+    return id;
+  },
+
+  appendAgentDelta: (id, delta) => set(s => ({
+    messages: s.messages.map(m =>
+      m.id === id ? { ...m, content: m.content + delta, displayContent: m.content + delta }
+                  : m
+    )
+  })),
+
+  finaliseAgentMessage: (id) => set(s => ({
+    streamActive: false, phase: 'ready',
+    messages: s.messages.map(m =>
+      m.id === id ? { ...m, status: 'complete' } : m
+    )
+  })),
+  // ... setAgentError, setPhase, startNewSession
+}));
+
+4.3  Stream Consumer
+// client/src/services/streamConsumer.ts
+
+export async function consumeStream(
+  messages: Pick<Message, 'role' | 'content'>[],
+  onDelta: (text: string) => void,
+  onDone: () => void,
+  onError: (msg: string) => void
+): Promise<void> {
+  const response = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages }),
+  });
+
+  if (!response.ok || !response.body) {
+    onError(`Request failed: HTTP ${response.status}`);
+    return;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';    // keep incomplete last line
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const evt = JSON.parse(line.slice(6));
+      if (evt.type === 'delta') onDelta(evt.text);
+      if (evt.type === 'done')  onDone();
+      if (evt.type === 'error') onError(evt.message);
+    }
+  }
+}
+
+4.4  Wire Up to the UI
+	•	Replace the no-op onSubmit in MessageComposer with useChat().sendMessage.
+	•	ChatThread reads messages from useSessionStore. Each append triggers a re-render — the streaming text appears character by character.
+	•	Disable the send button and textarea while streamActive is true.
+	•	Add auto-scroll: after each delta, scroll the thread to bottom unless the user has manually scrolled up (use a ref + a scroll-position check).
+	•	Remove the fixture data from App.tsx — the store starts empty.
+
+✓  WORKING RESULT — What works at the end of this step
+	•	Type a message and press Enter — the message appears in the thread immediately
+	•	The agent's response streams into the thread token by token in real time
+	•	The composer input is disabled and greyed while streaming is in progress
+	•	The thread auto-scrolls to the latest token as it arrives
+	•	Conversation history is maintained — the agent correctly references earlier messages
+	•	Sending multiple messages in sequence builds up a coherent multi-turn conversation
+▶  HOW TO VERIFY
+Open localhost:3000 — send 'Hello'  — agent responds in character as a senior frontend developer
+Send 'Write me a React hook for debouncing'  — watch tokens stream in
+Send a follow-up 'Make it support a callback'  — agent uses the prior context correctly
+While a response is streaming, try typing in the composer — it should be disabled
+Open DevTools Network tab — confirm no requests go to api.anthropic.com from the browser
+
+5
+STEP
+Rich Content Rendering
+Markdown, syntax highlighting, and code copy transform agent output
+⏱  1 day
+
+Agent responses currently render as raw text strings — TRANSPARENCY delimiters and markdown symbols visible. This step strips the TRANSPARENCY block from display content, renders Markdown properly, applies syntax highlighting to code blocks, and adds a copy action. When done, agent responses look like professional engineering output.
+
+5.1  Dependencies to Add
+# client/ — add to package.json
+npm install react-markdown rehype-sanitize remark-gfm
+npm install react-syntax-highlighter
+npm install -D @types/react-syntax-highlighter
+
+5.2  Display Content Stripping
+Before a completed message is rendered, strip the TRANSPARENCY block from its display content. This happens in the finaliseAgentMessage store action — not in the component.
+// In session store — finaliseAgentMessage
+finaliseAgentMessage: (id) => set(s => ({
+  messages: s.messages.map(m => {
+    if (m.id !== id) return m;
+    const splitPoint = m.content.indexOf('TRANSPARENCY_START');
+    const displayContent = splitPoint >= 0
+      ? m.content.slice(0, splitPoint).trim()
+      : m.content.trim();
+    return { ...m, status: 'complete', displayContent };
+  })
+})),
+
+5.3  MarkdownRenderer Component
+// Sanitisation config — allowlist approach
+const sanitizeOptions = {
+  allowedElements: ['p','h1','h2','h3','h4','strong','em','code',
+                    'pre','ul','ol','li','blockquote','hr','br','a'],
+  allowedAttributes: { a: ['href'], code: ['className'] },
+};
+
+// CodeBlock sub-component — extracted for the custom renderer
+function CodeBlock({ language, children }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    await navigator.clipboard.writeText(String(children).trim());
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <div className='relative group'>
+      <div className='lang-label'>{language}</div>
+      <button onClick={copy} className='copy-btn'>
+        {copied ? 'Copied!' : 'Copy'}
+      </button>
+      <SyntaxHighlighter language={language} style={oneLight}>
+        {String(children).trim()}
+      </SyntaxHighlighter>
+    </div>
+  );
+}
+
+5.4  Streaming vs Complete Rendering
+During streaming, render plain text (fast, no Markdown processing on every token). Switch to MarkdownRenderer only when the message status is 'complete'. This prevents excessive re-rendering on every token append.
+// MessageBubble.tsx
+function AgentContent({ message }: { message: Message }) {
+  if (message.status === 'streaming') {
+    // Plain text during stream — performant, shows raw tokens
+    return <p className='streaming-text'>{message.displayContent}</p>;
+  }
+  // Rendered Markdown once complete
+  return <MarkdownRenderer content={message.displayContent} />;
+}
+
+✓  WORKING RESULT — What works at the end of this step
+	•	Agent responses render Markdown: headings, bold, italic, lists, and inline code all styled
+	•	Code blocks display with syntax highlighting and a language label (e.g. 'tsx', 'css')
+	•	Clicking 'Copy' on a code block copies the raw code (no fences) to clipboard — button shows 'Copied!' for 2 seconds
+	•	The TRANSPARENCY delimiters are not visible in any agent message
+	•	Plain text renders during streaming; Markdown renders on completion — no visible jank
+	•	Script tags submitted by the user render as escaped text — not executed
+▶  HOW TO VERIFY
+Send 'Write a TypeScript interface for a user profile'  — response renders with proper formatting
+Send 'Give me a React component with CSS'  — two code blocks render with correct language highlighting
+Click copy on a code block — paste into a text editor — verify clean code with no backticks or fences
+Type <script>alert('xss')</script> as a message — it appears as literal text, no alert fires
+Open DevTools Performance — streaming render shows no dropped frames
+
+6
+STEP
+Transparency Panel
+Structured agent reasoning becomes visible and navigable
+⏱  1–2 days
+
+Parse the TRANSPARENCY block from completed agent messages and render it as a structured, interactive panel below each agent response. This is the feature that most clearly differentiates the product from a generic chat interface. When this step is complete, clicking a disclosure toggle reveals the agent's reasoning, task list, and assumptions.
+
+6.1  New Components
+client/src/components/
+├── transparency/
+│   ├── TransparencyPanel.tsx   # Collapsible container
+│   ├── ReasoningSection.tsx    # REASONING text block
+│   ├── TaskList.tsx            # TASKS checklist with status icons
+│   └── AssumptionsList.tsx     # ASSUMPTIONS bulleted list
+└── utils/
+    └── parseTransparency.ts   # Pure function: string → TransparencyData | null
+
+6.2  Parser Implementation
+// client/src/utils/parseTransparency.ts
+
+export function parseTransparency(raw: string): TransparencyData | null {
+  const match = raw.match(/TRANSPARENCY_START([\s\S]*?)TRANSPARENCY_END/);
+  if (!match) return null;
+
+  const block = match[1];
+
+  const reasoning = extractSection(block, 'REASONING:');
+  const tasksRaw  = extractSection(block, 'TASKS:');
+  const assumptions = extractSection(block, 'ASSUMPTIONS:');
+
+  let tasks: TransparencyData['tasks'] = [];
+  try {
+    tasks = JSON.parse(tasksRaw);
+  } catch {
+    tasks = [{ id: 1, description: tasksRaw, status: 'done' }];
+  }
+
+  return { reasoning: reasoning.trim(), tasks, assumptions: assumptions.trim() };
+}
+
+function extractSection(block: string, label: string): string {
+  const idx = block.indexOf(label);
+  if (idx === -1) return '';
+  const start = idx + label.length;
+  const nextLabel = block.slice(start).search(/\n[A-Z_]+:/);
+  return nextLabel === -1
+    ? block.slice(start).trim()
+    : block.slice(start, start + nextLabel).trim();
+}
+
+6.3  Transparency Panel UI
+Section
+Design Notes
+Disclosure toggle row
+Sits below the agent message content. Label: '▶ Show reasoning  (N tasks)'. Changes to '▼ Hide reasoning' when open. Keyboard activatable. Does not exist on conversational responses (transparency is null).
+Panel container
+Slides open with a CSS height animation (max-height transition). Padding separates it visually from the message content above. Subtle background tint to distinguish from the message body.
+Reasoning section
+Label 'Reasoning' in small caps. Paragraph text. Always the first section.
+Task list
+Label 'Tasks'. Numbered list. Each item has a status icon: ✓ (done, green), ▶ (in_progress, blue), ○ (pending, grey). Status text also shown for screen readers.
+Assumptions section
+Label 'Assumptions'. Bulleted list. If assumptions is 'None', render a subtle 'No assumptions made' notice instead.
+
+6.4  Wiring Parsing Into the Store
+// In session store — finaliseAgentMessage (update from Step 5)
+finaliseAgentMessage: (id) => set(s => ({
+  messages: s.messages.map(m => {
+    if (m.id !== id) return m;
+    const transparency = parseTransparency(m.content);
+    const splitPoint = m.content.indexOf('TRANSPARENCY_START');
+    const displayContent = splitPoint >= 0
+      ? m.content.slice(0, splitPoint).trim() : m.content.trim();
+    return { ...m, status: 'complete', displayContent, transparency };
+  })
+})),
+
+✓  WORKING RESULT — What works at the end of this step
+	•	Agent responses to coding tasks show a '▶ Show reasoning' toggle below the message
+	•	Clicking the toggle reveals three sections: Reasoning, Tasks, and Assumptions
+	•	Task items display with status icons (done/in_progress/pending) in correct colours
+	•	Clicking the toggle again collapses the panel cleanly
+	•	Conversational agent messages ('Sure, what would you like me to build?') have no toggle
+	•	Transparency panel is keyboard navigable — Tab reaches the toggle, Enter/Space activates it
+▶  HOW TO VERIFY
+Send 'Build a TypeScript form validation utility'  — response has '▶ Show reasoning' toggle
+Click the toggle — three labelled sections appear with correct content
+Check the Tasks list — items match what the agent described doing
+Send 'Thanks, that looks good'  — no toggle appears on the conversational response
+Tab to the toggle, press Enter — panel opens. Tab again, press Space — panel closes
+Run parseTransparency with a malformed transparency block — no crash, graceful fallback
+
+7
+STEP
+Phase State & Error Handling
+The header reflects live agent state; errors surface clearly with retry
+⏱  1 day
+
+Wire the profile header phase badge to the actual stream lifecycle. Add the context window warning. Implement proper error states with retry actions. Add the New Session button. When this step is complete, the UI never leaves the user in an uncertain state — they always know what the agent is doing and what to do when something goes wrong.
+
+7.1  Phase State Transitions
+// useChat.ts — phase transitions during a request lifecycle
+
+async function sendMessage(content: string) {
+  const { appendUserMessage, appendAgentMessageStart,
+           appendAgentDelta, finaliseAgentMessage,
+           setAgentError, setPhase } = useSessionStore.getState();
+
+  appendUserMessage(content);
+  setPhase('thinking');                    // ← THINKING immediately on send
+
+  const agentMsgId = appendAgentMessageStart();
+  let firstTokenReceived = false;
+
+  await consumeStream(
+    getApiMessages(),
+    (delta) => {
+      if (!firstTokenReceived) {
+        setPhase('responding');             // ← RESPONDING on first token
+        firstTokenReceived = true;
+      }
+      appendAgentDelta(agentMsgId, delta);
+    },
+    () => {
+      finaliseAgentMessage(agentMsgId);
+      setPhase('ready');                   // ← READY on completion
+    },
+    (msg) => {
+      setAgentError(agentMsgId, msg);
+      setPhase('ready');                   // ← READY even on error
+    }
+  );
+}
+
+7.2  Error State Component
+The MessageBubble for a message with status 'error' renders differently from a normal message. It shows the partial content received (if any), a styled error notice, and a Retry button that re-sends the triggering user message.
+// MessageBubble error state
+function ErrorNotice({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className='error-notice' role='alert'>
+      <span>⚠ Response interrupted. Partial content shown above.</span>
+      <button onClick={onRetry} className='retry-btn'>
+        Retry
+      </button>
+    </div>
+  );
+}
+
+7.3  Context Window Warning
+// server — emit warning when nearing context limit
+const finalMsg = await stream.finalMessage();
+const totalTokens = finalMsg.usage.input_tokens + finalMsg.usage.output_tokens;
+const contextLimit = 180000;  // claude-sonnet-4-6 limit
+
+emit({ type: 'done', usage: finalMsg.usage,
+        contextWarning: totalTokens > contextLimit * 0.80 });
+
+// client — session store
+// On 'done' event: if contextWarning is true, set contextWarning flag in store.
+// ChatThread renders a banner at the top when contextWarning is true.
+
+7.4  New Session Action
+	•	New Session button in ProfileHeader calls startNewSession() from the store.
+	•	startNewSession clears messages[], resets streamActive, phase, contextWarning.
+	•	Show a confirmation dialogue if messages.length > 0 before clearing — 'Start a new session? This will clear the current conversation.'
+
+✓  WORKING RESULT — What works at the end of this step
+	•	ProfileHeader phase badge changes: THINKING immediately on send, RESPONDING on first token, READY when complete
+	•	If a network error occurs mid-stream, the partial agent response is visible with an error notice and Retry button
+	•	Clicking Retry re-sends the last user message and resumes normally
+	•	When context usage exceeds 80%, a warning banner appears in the chat thread
+	•	New Session button clears the thread and resets all state — agent has no memory of prior messages after
+	•	All error states are visually distinct, include a recovery action, and are announced to screen readers
+▶  HOW TO VERIFY
+Send a message — watch phase badge cycle READY → THINKING → RESPONDING → READY
+In DevTools Network tab, cancel the streaming request mid-flight — error state appears with Retry
+Click Retry — request resumes and completes normally
+Click New Session — confirmation appears. Confirm — thread clears, context is gone
+Send a long conversation (10+ detailed exchanges) — watch context warning appear
+
+8
+STEP
+Hardening & Launch Readiness
+Security, accessibility, tests, and all 12 acceptance criteria green
+⏱  2–3 days
+
+This step does not add user-facing features. It makes the product safe, accessible, reliable, and verifiably correct. Every MVP acceptance criterion from the PRD is checked and signed off in this step. Nothing ships until all 12 are green.
+
+8.1  Security Hardening
+	•	Run truffleHog against the full git history — zero secrets in any commit.
+	•	Build the production bundle and run gitleaks scan on the dist/ directory.
+	•	Add npm audit to CI — block on high/critical severity findings.
+	•	Confirm in DevTools Network inspector that no request goes to api.anthropic.com from the browser.
+	•	Confirm ANTHROPIC_API_KEY does not appear in any server log output.
+	•	Set secure HTTP response headers: X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Content-Security-Policy.
+
+8.2  Accessibility Pass
+	•	Run Lighthouse accessibility audit against the production build — target 85+.
+	•	Test full keyboard navigation with no mouse — tab through all interactive elements.
+	•	Add aria-live='polite' region wrapping ChatThread to announce new messages to screen readers.
+	•	Test with VoiceOver (macOS) or NVDA (Windows) — new agent messages are read aloud.
+	•	Verify PhaseBadge uses both colour and icon + text label — not colour alone.
+	•	Verify error notices use role='alert' for immediate screen reader announcement.
+	•	Check colour contrast ratios for all text — minimum 4.5:1 for normal text, 3:1 for large text.
+
+8.3  Test Suite
+Tests to write for MVP:
+
+Unit tests (Vitest):
+  parseTransparency()  — valid block, missing sections, malformed JSON, no block
+  SessionStore actions — appendUserMessage, appendAgentDelta, finaliseAgentMessage,
+                         startNewSession, setAgentError
+  validateChat middleware — valid body, empty array, missing role, oversized content
+  classifyError()       — rate limit error, timeout, unknown
+
+Component tests (Vitest + React Testing Library):
+  MessageBubble         — user variant, agent complete, agent streaming, agent error
+  TransparencyPanel     — renders all three sections, collapse/expand, null transparency
+  TaskList              — done/in_progress/pending status icons
+  MessageComposer       — Enter sends, Shift+Enter inserts newline, disabled during stream
+  PhaseBadge            — all four phase states render correct label + colour
+
+E2E tests (Playwright):
+  Critical path: load page → send message → streaming response → transparency panel opens
+  Error recovery: simulate network failure → error state visible → retry succeeds
+  New session: send messages → new session → messages cleared
+  XSS: send script tag message → not executed
+
+8.4  Performance Checks
+	•	Measure time to first streaming token: 10 test messages, P95 must be under 2 seconds.
+	•	Profile a 50-message session in DevTools — no memory leaks, no dropped frames during streaming.
+	•	Verify react-syntax-highlighter is loaded lazily — check Network tab on first load (no syntax highlighter chunk in initial bundle).
+	•	Run Lighthouse performance audit — document the score for the baseline.
+
+8.5  MVP Acceptance Criteria Sign-off
+All 12 criteria must be checked by QA before sign-off
+1. Manager sends a message and receives a streaming response from FE-SENIOR-01
+2. Agent maintains senior frontend developer character across 10+ messages
+3. Every code-generation response includes a Transparency Panel with all 3 sections
+4. Transparency Panel is collapsed by default, expands/collapses cleanly via keyboard
+5. Task items in the panel match the steps described in the response
+6. Code blocks render with syntax highlighting and a working copy action
+7. Profile header shows name, role, skills, and phase state — phase updates correctly
+8. New Session clears history — agent has no knowledge of prior messages
+9. No Anthropic API key in any client-side asset — confirmed by automated secret scan
+10. Script tag in a message does not execute JavaScript
+11. Mid-stream network failure shows partial response + error + retry action
+12. Lighthouse accessibility audit scores 85 or above
+
+✓  WORKING RESULT — What works at the end of this step
+	•	All 12 MVP acceptance criteria pass — signed off by product owner and QA
+	•	Lighthouse accessibility score: 85 or above on production build
+	•	Zero secrets detected in client bundle or git history by automated scan
+	•	E2E critical path test passes on Chrome, Firefox, and Safari
+	•	Unit test coverage: 70% or above across client and server
+	•	Production Docker build completes successfully and the container runs correctly
+▶  HOW TO VERIFY
+Run: npm run test  — all unit and component tests pass
+Run: npx playwright test  — all E2E tests pass
+Run: docker build + docker run  — container starts, localhost:3000 serves the app
+Run: npx lighthouse http://localhost:3000 --only-categories=accessibility  — score 85+
+Complete the 12-item sign-off checklist above — every item checked
+
+Completion Summary
+When all 8 steps are complete, you have a shippable MVP. Here is a summary of what exists:
+
+Deliverable
+What Was Built
+Client bundle
+React 18 + TypeScript SPA. Zustand state. Tailwind styling. Markdown rendering with sanitisation. Syntax-highlighted code blocks. Transparent streaming. Collapsible transparency panels.
+Server
+Express API server. Single POST /api/chat route with zod validation. SSE streaming proxy. System prompt loaded from file. Error classification. Context window monitoring.
+FE-SENIOR-01 persona
+Full system prompt defining identity, stack, behaviour rules, and output contract. Version-controlled. Verified to produce TRANSPARENCY blocks consistently.
+Security controls
+API key in env only. Secret scanning in CI. XSS-sanitised Markdown rendering. Request body validation. Secure response headers.
+Test suite
+Unit tests for parser, store, server middleware. Component tests for all key UI elements. E2E critical path test. XSS test. Error recovery test.
+CI pipeline
+Lint → type-check → unit tests → E2E tests → secret scan → build. All stages required to pass before merge.
+Docker deployment
+Single container serving both static assets and API. Environment variables for all secrets and config.
+
+What Is Not Built
+Everything in the 'Explicitly Out of Scope' section of the MVP PRD remains out of scope.
+Session persistence, profile selector, file upload, authentication, test runner integration — none of these exist.
+The architecture supports all of these as Phase 2+ additions without structural changes.
+
