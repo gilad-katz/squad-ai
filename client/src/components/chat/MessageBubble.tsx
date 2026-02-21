@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Message } from '../../types';
-import { ChevronRight } from 'lucide-react';
+import { MarkdownRenderer } from './MarkdownRenderer';
+import { TransparencyPanel } from '../transparency/TransparencyPanel';
 
 interface MessageBubbleProps {
     message: Message;
@@ -28,21 +29,17 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
             <div className="flex flex-col max-w-[85%] w-full bg-white border border-gray-200 rounded-2xl rounded-tl-sm shadow-sm overflow-hidden">
                 <div className="p-5">
                     <div className="prose prose-blue max-w-none">
-                        {/* Step 2 uses simple pre-wrap text. Step 5 will replace this with MarkdownRenderer */}
-                        <pre className="whitespace-pre-wrap font-sans text-base text-gray-800 m-0">{message.displayContent}</pre>
+                        {message.status === 'streaming' ? (
+                            <pre className="whitespace-pre-wrap font-sans text-base text-gray-800 m-0">{message.displayContent}</pre>
+                        ) : (
+                            <MarkdownRenderer content={message.displayContent} />
+                        )}
                     </div>
                 </div>
 
-                {/* Placeholder for transparency toggle */}
-                <div className="bg-gray-50 border-t border-gray-100 px-5 py-3">
-                    <button
-                        disabled
-                        className="flex items-center gap-1.5 text-sm font-medium text-gray-500 cursor-not-allowed"
-                    >
-                        <ChevronRight className="w-4 h-4" />
-                        Show reasoning
-                    </button>
-                </div>
+                {message.transparency && (
+                    <TransparencyPanel data={message.transparency} />
+                )}
             </div>
         </div>
     );

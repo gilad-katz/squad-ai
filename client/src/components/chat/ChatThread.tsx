@@ -1,14 +1,26 @@
-import React from 'react';
-import type { Message } from '../../types';
+import React, { useEffect, useRef } from 'react';
+import { useSessionStore } from '../../store/session';
 import { MessageBubble } from './MessageBubble';
 
-interface ChatThreadProps {
-    messages: Message[];
-}
+export const ChatThread: React.FC = () => {
+    const messages = useSessionStore(state => state.messages);
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const trackScrollRef = useRef(true);
 
-export const ChatThread: React.FC<ChatThreadProps> = ({ messages }) => {
+    const handleScroll = (e: React.UIEvent<HTMLElement>) => {
+        const target = e.target as HTMLElement;
+        const reachedBottom = Math.abs(target.scrollHeight - target.scrollTop - target.clientHeight) < 50;
+        trackScrollRef.current = reachedBottom;
+    };
+
+    useEffect(() => {
+        if (trackScrollRef.current && scrollRef.current) {
+            scrollRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [messages]);
+
     return (
-        <main className="flex-1 w-full overflow-y-auto bg-gray-50 pt-24 pb-32">
+        <main onScroll={handleScroll} className="flex-1 w-full overflow-y-auto bg-gray-50 pt-24 pb-32">
             <div className="max-w-4xl mx-auto px-6 w-full flex flex-col items-center">
                 {messages.length === 0 ? (
                     <div className="flex h-[50vh] flex-col items-center justify-center text-center text-gray-500">
@@ -25,6 +37,7 @@ export const ChatThread: React.FC<ChatThreadProps> = ({ messages }) => {
                         {messages.map((msg) => (
                             <MessageBubble key={msg.id} message={msg} />
                         ))}
+                        <div ref={scrollRef} />
                     </div>
                 )}
             </div>
