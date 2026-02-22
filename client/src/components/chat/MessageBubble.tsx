@@ -20,6 +20,18 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
                     className="bg-blue-600 text-white px-5 py-3 rounded-2xl rounded-tr-sm max-w-[75%] shadow-sm"
                     title={new Date(message.timestamp).toLocaleString()}
                 >
+                    {message.attachments && message.attachments.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-2">
+                            {message.attachments.map(att => (
+                                <img
+                                    key={att.id}
+                                    src={att.url || `data:${att.mimeType};base64,${att.data}`}
+                                    alt={att.name}
+                                    className="max-w-[200px] max-h-[200px] object-contain rounded-lg border border-blue-400 bg-white"
+                                />
+                            ))}
+                        </div>
+                    )}
                     <p className="whitespace-pre-wrap text-base">{message.displayContent}</p>
                 </div>
             </div>

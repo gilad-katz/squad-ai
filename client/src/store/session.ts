@@ -7,7 +7,7 @@ interface SessionStore {
     phase: PhaseState;
     contextWarning: boolean;
     sessionId: string | null;
-    appendUserMessage: (content: string) => void;
+    appendUserMessage: (content: string, attachments?: Message['attachments']) => void;
     appendAgentMessageStart: () => string;   // returns new message id
     appendAgentDelta: (id: string, delta: string) => void;
     finaliseAgentMessage: (id: string) => void;
@@ -19,6 +19,7 @@ interface SessionStore {
     addServerFileAction: (msgId: string, action: FileAction) => void;
     setTransparency: (msgId: string, data: TransparencyData) => void;
     updateGitActionResult: (msgId: string, index: number, output?: string, error?: string) => void;
+    setMessages: (messages: Message[]) => void;
     startNewSession: () => void;
 }
 
@@ -29,10 +30,11 @@ export const useSessionStore = create<SessionStore>((set) => ({
     contextWarning: false,
     sessionId: null,
 
-    appendUserMessage: (content) => set(s => ({
+    appendUserMessage: (content, attachments) => set(s => ({
         messages: [...s.messages, {
             id: crypto.randomUUID(), role: 'user', content,
-            displayContent: content, transparency: null, fileActions: [], serverFileActions: [], gitActions: [],
+            displayContent: content, attachments,
+            transparency: null, fileActions: [], serverFileActions: [], gitActions: [],
             status: 'complete', timestamp: Date.now()
         }]
     })),
@@ -134,6 +136,7 @@ export const useSessionStore = create<SessionStore>((set) => ({
         })
     })),
 
+    setMessages: (messages) => set({ messages }),
     startNewSession: () => set({
         messages: [],
         streamActive: false,

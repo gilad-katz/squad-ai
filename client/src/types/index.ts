@@ -1,5 +1,14 @@
 export type PhaseState = 'ready' | 'thinking' | 'planning' | 'executing' | 'building' | 'responding';
 
+export interface Attachment {
+    id: string;
+    type: 'image';
+    mimeType: string;
+    data: string; // base64
+    name?: string;
+    url?: string;  // locally generated object URL for preview
+}
+
 export interface TransparencyData {
     reasoning: string;
     tasks: Array<{ id: number; description: string; status: 'done' | 'in_progress' | 'pending' }>;
@@ -36,6 +45,7 @@ export interface Message {
     role: 'user' | 'assistant';
     content: string;                 // raw (may contain TRANSPARENCY / FILE_ACTIONS blocks)
     displayContent: string;          // stripped of structured blocks
+    attachments?: Attachment[];
     transparency: TransparencyData | null;
     fileActions: FileAction[];
     serverFileActions: FileAction[];

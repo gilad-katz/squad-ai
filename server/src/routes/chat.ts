@@ -9,6 +9,7 @@ import { exec } from 'child_process';
 import util from 'util';
 import fs from 'fs';
 import path from 'path';
+import { lintWorkspace, typeCheckWorkspace, formatVerificationErrorsForPrompt } from '../services/lintService';
 
 const execAsync = util.promisify(exec);
 
@@ -111,21 +112,62 @@ router.post('/', validateChat, async (req, res) => {
     try {
         // ── Step 1: Orchestrator LLM Call ──────────────────────────────────
         // Convert messages for Gemini API format
-        const geminiContents = messages.map((m: any) => ({
-            role: m.role === 'assistant' ? 'model' : m.role,
-            parts: [{ text: m.content }]
-        }));
+        const geminiContents = messages.map((m: any) => {
+            const parts: any[] = [{ text: m.content }];
+            if (m.attachments && Array.isArray(m.attachments)) {
+                for (const att of m.attachments) {
+                    if (att.type === 'image') {
+                        parts.push({
+                            inlineData: {
+                                data: att.data,
+                                mimeType: att.mimeType
+                            }
+                        });
+                    }
+                }
+            }
+            return {
+                role: m.role === 'assistant' ? 'model' : m.role,
+                parts
+            };
+        });
+
+        // persistence: Initialize workspace and save full messages history
+        const { dir: currentWorkspaceDir, isNew: isSessionNew } = ensureWorkspace(sessionId);
+        try {
+            const historyPath = path.join(currentWorkspaceDir, 'chat_history.json');
+            fs.writeFileSync(historyPath, JSON.stringify(messages, null, 2));
+        } catch (err) {
+            console.error('Failed to save chat history:', err);
+        }
+
+        // Extract attachments/images from the current user message for persistence
+        for (const m of messages) {
+            if (m.role === 'user' && m.attachments) {
+                for (const att of m.attachments) {
+                    if (att.type === 'image' && att.name && att.data) {
+                        try {
+                            const uploadsDir = path.join(currentWorkspaceDir, 'uploads');
+                            if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+                            const filePath = path.join(uploadsDir, `${Date.now()}-${att.name}`);
+                            fs.writeFileSync(filePath, Buffer.from(att.data, 'base64'));
+                        } catch (err) {
+                            console.error('Failed to save user attachment:', err);
+                        }
+                    }
+                }
+            }
+        }
 
         emit({ type: 'phase', phase: 'planning' });
         emit({ type: 'delta', text: '' }); // Signal stream start
 
         // Build workspace-aware system instruction
-        const { dir: workspaceDir, isNew } = ensureWorkspace(sessionId);
         const existingFiles = listFiles(sessionId);
 
         // If this is a brand new workspace, emit file_action events for the scaffolded template files
         // so they appear in the chat thread as "created" files.
-        if (isNew) {
+        if (isSessionNew) {
             for (const filepath of existingFiles) {
                 try {
                     const content = readFile(sessionId, filepath);
@@ -243,6 +285,10 @@ router.post('/', validateChat, async (req, res) => {
             }
         };
 
+        // Result collectors for persistence
+        const completedServerFileActions: any[] = [];
+        const completedGitActions: any[] = [];
+
         // Collect all async task factories (lazy — won't execute until invoked by the pool)
         const taskFactories: (() => Promise<void>)[] = [];
 
@@ -310,7 +356,7 @@ router.post('/', validateChat, async (req, res) => {
                         const diff = oldContent !== null ? generateDiff(oldContent, code, task.filepath) : null;
                         const lines = code.split('\n').length;
 
-                        emit({
+                        const actionResult = {
                             type: 'file_action',
                             id: taskId,
                             filename: task.filepath.split('/').pop() || task.filepath,
@@ -322,11 +368,13 @@ router.post('/', validateChat, async (req, res) => {
                             linesRemoved: 0,
                             diff,
                             status: 'complete'
-                        });
+                        };
+                        completedServerFileActions.push(actionResult);
+                        emit(actionResult);
                         updateTaskStatus(index, 'done');
                     } catch (err: any) {
                         console.error(`Executor failed for ${task.filepath}:`, err.message);
-                        emit({
+                        const failureResult = {
                             type: 'file_action',
                             id: taskId,
                             filename: task.filepath.split('/').pop() || task.filepath,
@@ -338,7 +386,9 @@ router.post('/', validateChat, async (req, res) => {
                             linesRemoved: 0,
                             diff: null,
                             status: 'complete'
-                        });
+                        };
+                        completedServerFileActions.push(failureResult);
+                        emit(failureResult);
                         updateTaskStatus(index, 'done');
                     }
                 }));
@@ -348,7 +398,7 @@ router.post('/', validateChat, async (req, res) => {
                 updateTaskStatus(index, 'in_progress');
                 try {
                     deleteFile(sessionId, task.filepath);
-                    emit({
+                    const deleteResult = {
                         type: 'file_action',
                         id: taskId,
                         filename: task.filepath.split('/').pop() || task.filepath,
@@ -360,7 +410,9 @@ router.post('/', validateChat, async (req, res) => {
                         linesRemoved: 0,
                         diff: null,
                         status: 'complete'
-                    });
+                    };
+                    completedServerFileActions.push(deleteResult);
+                    emit(deleteResult);
                 } catch (err: any) {
                     console.warn(`Failed to delete ${task.filepath}:`, err.message);
                 }
@@ -389,11 +441,11 @@ router.post('/', validateChat, async (req, res) => {
 
                         if (!imageBuffer) throw new Error('No image data in response');
 
-                        const fullPath = path.join(workspaceDir, task.filepath);
+                        const fullPath = path.join(currentWorkspaceDir, task.filepath);
                         fs.mkdirSync(path.dirname(fullPath), { recursive: true });
                         fs.writeFileSync(fullPath, imageBuffer);
 
-                        emit({
+                        const imgResult = {
                             type: 'file_action',
                             id: taskId,
                             filename: task.filepath.split('/').pop() || task.filepath,
@@ -406,11 +458,13 @@ router.post('/', validateChat, async (req, res) => {
                             diff: null,
                             status: 'complete',
                             prompt: task.prompt
-                        });
+                        };
+                        completedServerFileActions.push(imgResult);
+                        emit(imgResult);
                         updateTaskStatus(index, 'done');
                     } catch (err: any) {
                         console.error(`Image generation failed for ${task.filepath}:`, err.message);
-                        emit({
+                        const imgFailureResult = {
                             type: 'file_action',
                             id: taskId,
                             filename: task.filepath.split('/').pop() || task.filepath,
@@ -423,7 +477,9 @@ router.post('/', validateChat, async (req, res) => {
                             diff: null,
                             status: 'complete',
                             prompt: task.prompt
-                        });
+                        };
+                        completedServerFileActions.push(imgFailureResult);
+                        emit(imgFailureResult);
                         updateTaskStatus(index, 'done');
                     }
                 });
@@ -444,17 +500,21 @@ router.post('/', validateChat, async (req, res) => {
                     }
 
                     try {
-                        const env = { ...process.env, GIT_CEILING_DIRECTORIES: path.dirname(workspaceDir) };
+                        const env = { ...process.env, GIT_CEILING_DIRECTORIES: path.dirname(currentWorkspaceDir) };
                         let cmdToRun = command;
                         if (cmdToRun.trim() === 'git push') {
                             cmdToRun = 'git push -u origin HEAD';
                         }
-                        const { stdout, stderr } = await execAsync(cmdToRun, { cwd: workspaceDir, env });
+                        const { stdout, stderr } = await execAsync(cmdToRun, { cwd: currentWorkspaceDir, env });
                         const out = (stdout || stderr || '').trim() || 'Command completed successfully.';
-                        emit({ type: 'git_result', index, output: out });
+                        const gitResult = { id: `git-${Date.now()}-${index}`, type: 'git_result', index, output: out };
+                        completedGitActions.push(gitResult);
+                        emit(gitResult);
                     } catch (err: any) {
                         const errorOut = (err.stdout || err.stderr || err.message || '').trim();
-                        emit({ type: 'git_result', index, error: `Failed: ${errorOut}` });
+                        const gitErrorResult = { id: `git-${Date.now()}-${index}`, type: 'git_result', index, error: `Failed: ${errorOut}` };
+                        completedGitActions.push(gitErrorResult);
+                        emit(gitErrorResult);
                     }
                     updateTaskStatus(index, 'done');
                 });
@@ -464,6 +524,111 @@ router.post('/', validateChat, async (req, res) => {
         // ── Step 3: Execute with concurrency limit (max 5 parallel API calls) ──
         await runWithConcurrency(taskFactories, 5);
 
+        // ── Step 4: Automated Verification & Repair ────────────────────────
+        let verifyRetries = 0;
+        const MAX_VERIFY_RETRIES = 2;
+
+        while (verifyRetries <= MAX_VERIFY_RETRIES) {
+            emit({ type: 'phase', phase: 'verifying' });
+
+            const [lintResults, tscErrors] = await Promise.all([
+                lintWorkspace(sessionId),
+                typeCheckWorkspace(sessionId)
+            ]);
+
+            const hasLintErrors = lintResults.some(r => r.errorCount > 0);
+            const hasTscErrors = tscErrors.length > 0;
+
+            if (!hasLintErrors && !hasTscErrors) break;
+
+            // Identify all files that need attention
+            const filesToFix = new Set<string>();
+            lintResults.filter(r => r.errorCount > 0).forEach(r => filesToFix.add(path.relative(currentWorkspaceDir, r.filepath)));
+
+            // TSC errors look like: src/App.tsx(2,7): error TS2307...
+            tscErrors.forEach(err => {
+                const match = err.match(/^([^(\s]+)/);
+                if (match && match[1]) {
+                    filesToFix.add(match[1]);
+                }
+            });
+
+            if (filesToFix.size === 0 && hasTscErrors) {
+                // If we have TSC errors but couldn't map them to files, something is wrong
+                // Fallback: try to fix the main files or App.tsx
+                if (fs.existsSync(path.join(currentWorkspaceDir, 'src/App.tsx'))) {
+                    filesToFix.add('src/App.tsx');
+                }
+            }
+
+            const verificationReport = formatVerificationErrorsForPrompt(lintResults, tscErrors, currentWorkspaceDir);
+
+            const fixTasks = Array.from(filesToFix).map((relPath) => {
+                return async () => {
+                    const code = await executeFileAction(
+                        geminiContents,
+                        sessionId,
+                        relPath,
+                        `VERIFICATION FAILED for the following reasons:\n\n${verificationReport}\n\nREPAIR INSTRUCTIONS for ${relPath}:\n1. Analyze the errors specifically for this file.\n2. Fix any broken imports, missing exports, or type mismatches.\n3. If you imported a file that doesn't exist, either create it (in a previous task) or remove the import.\n4. Output ONLY the fixed RAW SOURCE CODE for ${relPath}.`,
+                        listFiles(sessionId)
+                    );
+                    const oldContent = writeFile(sessionId, relPath, code);
+                    const diff = generateDiff(oldContent || '', code, relPath);
+
+                    const lines = code.split('\n').length;
+                    const serverAction = {
+                        id: `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                        type: 'file_action',
+                        action: 'edited',
+                        filename: relPath.split('/').pop() || relPath,
+                        filepath: relPath,
+                        language: detectLanguage(relPath),
+                        content: code,
+                        linesAdded: lines,
+                        linesRemoved: 0,
+                        diff,
+                        status: 'complete'
+                    };
+                    completedServerFileActions.push(serverAction);
+                    emit(serverAction);
+                };
+            });
+
+            await runWithConcurrency(fixTasks, 5);
+            verifyRetries++;
+        }
+
+        // ── Step 5: Finalize History persistence ──
+        const assistantContent = plan.tasks
+            .filter(t => t.type === 'chat')
+            .map(t => t.content)
+            .join('\n\n');
+
+        const finalAssistantMessage = {
+            id: `msg-${Date.now()}`,
+            role: 'assistant',
+            content: assistantContent,
+            displayContent: assistantContent,
+            status: 'complete',
+            timestamp: Date.now(),
+            transparency: {
+                reasoning: plan.reasoning || '',
+                tasks: transparencyTasks.map(t => ({ id: t.id, description: t.description, status: 'done' })),
+                assumptions: 'None'
+            },
+            fileActions: [],
+            serverFileActions: completedServerFileActions,
+            gitActions: completedGitActions
+        };
+
+        try {
+            const finalHistory = [...messages, finalAssistantMessage];
+            const historyPath = path.join(currentWorkspaceDir, 'chat_history.json');
+            fs.writeFileSync(historyPath, JSON.stringify(finalHistory, null, 2));
+        } catch (err) {
+            console.error('Failed to finalize chat history:', err);
+        }
+
         emit({ type: 'phase', phase: 'ready' });
         emit({ type: 'done', usage: null, sessionId });
 
@@ -471,6 +636,26 @@ router.post('/', validateChat, async (req, res) => {
         emit({ type: 'error', message: classifyError(err) });
     } finally {
         res.end();
+    }
+});
+
+// ─── History Retrieval ───────────────────────────────────────────────────────
+
+router.get('/:sessionId/history', async (req, res) => {
+    const { sessionId } = req.params;
+    try {
+        const { dir: workspaceDir } = ensureWorkspace(sessionId);
+        const historyPath = path.join(workspaceDir, 'chat_history.json');
+
+        if (!fs.existsSync(historyPath)) {
+            return res.json([]);
+        }
+
+        const history = fs.readFileSync(historyPath, 'utf8');
+        res.json(JSON.parse(history));
+    } catch (err: any) {
+        console.error('Failed to retrieve history:', err);
+        res.status(500).json({ error: 'Failed to retrieve chat history' });
     }
 });
 

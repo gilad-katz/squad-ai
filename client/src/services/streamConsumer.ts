@@ -1,7 +1,7 @@
 import type { Message, FileAction, PhaseState, TransparencyData } from '../types';
 
 export async function consumeStream(
-    messages: Pick<Message, 'role' | 'content'>[],
+    messages: Pick<Message, 'role' | 'content' | 'attachments'>[],
     sessionId: string | null,
     onDelta: (text: string) => void,
     onDone: (usage?: { input_tokens: number, output_tokens: number }, sessionId?: string) => void,
