@@ -1,6 +1,6 @@
 import { ai } from './gemini';
 
-const EXECUTOR_PROMPT = `You are a Best-in-Class Senior Frontend Developer execution agent.
+const EXECUTOR_PROMPT_BASE = `You are a Best-in-Class Senior Frontend Developer execution agent.
 Your sole purpose is to output RAW SOURCE CODE based on the user's prompt and the codebase context.
 You MUST NOT output any markdown blocks (e.g., \`\`\`typescript ... \`\`\`).
 You MUST NOT output any conversational text, explanations, or warnings.
@@ -46,6 +46,20 @@ CRITICAL: When importing from other project files, you MUST use the EXACT file p
 - Always use the \`.tsx\` convention for React components as listed in the manifest.
 `;
 
+const EDIT_FILE_ADDENDUM = `
+EDIT MODE (CRITICAL):
+You are EDITING an existing file, NOT creating it from scratch.
+You will be given the file's CURRENT CONTENT below.
+Your job is to MERGE your changes into the existing code.
+
+RULES FOR EDITING:
+1. PRESERVE all existing imports, components, functions, styles, and logic that are NOT related to the requested change.
+2. Only ADD, MODIFY, or REMOVE code that is directly relevant to the edit request.
+3. Do NOT rewrite the entire file from scratch. Do NOT simplify or "clean up" unrelated code.
+4. Do NOT change the coding style, CSS variable names, color schemes, class names, or overall structure unless explicitly asked.
+5. Output the COMPLETE file with your changes merged in — the output replaces the file entirely, so nothing can be omitted.
+`;
+
 // Timeout in milliseconds for a single executor call
 const EXECUTOR_TIMEOUT_MS = 60_000; // 60 seconds
 
@@ -70,27 +84,51 @@ export async function executeFileAction(
     sessionId: string,
     filepath: string,
     prompt: string,
-    fileManifest?: string[]
+    fileManifest?: string[],
+    existingContent?: string | null,
+    relatedFiles?: Record<string, string>
 ): Promise<string> {
     // Build file manifest context so the executor knows all sibling file paths
     const manifestSection = fileManifest && fileManifest.length > 0
         ? `\n\nPROJECT FILE MANIFEST (use these EXACT paths for imports):\n${fileManifest.map(f => `- ${f}`).join('\n')}`
         : '';
 
+    // Build related files context so the executor can see imported CSS, components, data
+    let relatedFilesSection = '';
+    if (relatedFiles && Object.keys(relatedFiles).length > 0) {
+        const entries = Object.entries(relatedFiles)
+            .map(([fp, content]) => `--- ${fp} ---\n${content}`)
+            .join('\n\n');
+        relatedFilesSection = `\n\nRELATED FILE CONTENTS (imported by this file — use these for context, match their exports/styles):\n${entries}`;
+    }
+
+    // Build the task prompt — for edits, include existing content
+    let taskText: string;
+    if (existingContent) {
+        taskText = `TASK: Edit the file ${filepath}.\n\nCURRENT FILE CONTENT:\n\`\`\`\n${existingContent}\n\`\`\`${relatedFilesSection}\n\nEDIT REQUIREMENTS: ${prompt}\n\nOutput the COMPLETE updated file with your changes merged into the existing content. Do NOT remove any existing code unless the edit specifically requires it.`;
+    } else {
+        taskText = `TASK: Generate complete code for ${filepath}.${relatedFilesSection}\nREQUIREMENTS: ${prompt}`;
+    }
+
     // Append the specific task to the end of the history
     const contents = [
         ...chatHistory,
         {
             role: 'user',
-            parts: [{ text: `TASK: Generate complete code for ${filepath}.\nREQUIREMENTS: ${prompt}` }]
+            parts: [{ text: taskText }]
         }
     ];
+
+    // Use the edit addendum when editing existing files
+    const systemPrompt = existingContent
+        ? EXECUTOR_PROMPT_BASE + EDIT_FILE_ADDENDUM + manifestSection + `\n\nActive Session ID: ${sessionId}`
+        : EXECUTOR_PROMPT_BASE + manifestSection + `\n\nActive Session ID: ${sessionId}`;
 
     const apiCall = ai.models.generateContent({
         model: process.env.MODEL_ID || 'gemini-2.5-flash',
         contents,
         config: {
-            systemInstruction: EXECUTOR_PROMPT + manifestSection + `\n\nActive Session ID: ${sessionId}`
+            systemInstruction: systemPrompt
         }
     });
 

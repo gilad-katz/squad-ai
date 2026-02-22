@@ -73,7 +73,8 @@ export function useChat() {
                         name: a.name
                     })) : undefined
                 };
-            });
+            })
+            .filter(m => m.content && m.content.trim().length > 0);
 
         const agentMsgId = useSessionStore.getState().appendAgentMessageStart();
 

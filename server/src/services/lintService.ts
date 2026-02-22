@@ -114,6 +114,104 @@ export async function typeCheckWorkspace(sessionId: string): Promise<string[]> {
 }
 
 /**
+ * Scans workspace source files for relative imports that point to non-existent files.
+ * This catches CSS/image/asset imports that tsc ignores (moduleResolution: "bundler").
+ */
+export async function checkMissingImports(sessionId: string): Promise<string[]> {
+    const workspaceDir = path.join(WORKSPACE_ROOT, sessionId);
+    const srcDir = path.join(workspaceDir, 'src');
+    if (!fs.existsSync(srcDir)) return [];
+
+    const errors: string[] = [];
+    const sourceFiles = getAllSourceFiles(srcDir);
+
+    for (const absFilePath of sourceFiles) {
+        const content = fs.readFileSync(absFilePath, 'utf-8');
+        const relFilePath = path.relative(workspaceDir, absFilePath);
+
+        // Match: import ... from './path' or import './path'
+        const importRegex = /import\s+(?:.*?\s+from\s+)?['"](\.\/.+?|\.\.\/[^'"]+)['"]/g;
+        let match;
+        while ((match = importRegex.exec(content)) !== null) {
+            const importPath = match[1];
+            const importDir = path.dirname(absFilePath);
+            const resolvedBase = path.join(importDir, importPath);
+
+            // If the import has an explicit extension (e.g. .css, .png, .svg), check directly
+            if (path.extname(importPath)) {
+                if (!fs.existsSync(resolvedBase)) {
+                    errors.push(`${relFilePath}: Missing import '${importPath}' — file does not exist`);
+                }
+            } else {
+                // No extension — try TS/JS extensions (tsc already handles these, but belt-and-suspenders)
+                const extensions = ['.ts', '.tsx', '.js', '.jsx', '/index.ts', '/index.tsx', '/index.js'];
+                const found = extensions.some(ext => fs.existsSync(resolvedBase + ext));
+                if (!found) {
+                    errors.push(`${relFilePath}: Missing import '${importPath}' — file does not exist`);
+                }
+            }
+        }
+    }
+    return errors;
+}
+
+/** Recursively collect all .ts/.tsx/.js/.jsx files under a directory */
+function getAllSourceFiles(dir: string): string[] {
+    const files: string[] = [];
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory() && entry.name !== 'node_modules') {
+            files.push(...getAllSourceFiles(fullPath));
+        } else if (entry.isFile() && /\.(tsx?|jsx?)$/.test(entry.name)) {
+            files.push(fullPath);
+        }
+    }
+    return files;
+}
+
+/**
+ * Extracts the file path from a tsc error line.
+ * Handles both formats:
+ *   src/App.tsx(7,10): error TS2305: ...
+ *   src/App.tsx:7:9 - error TS2305: ...
+ */
+export function extractFilePathFromTscError(errorLine: string): string | null {
+    // Parenthesis format: src/App.tsx(7,10): error TS...
+    const parenMatch = errorLine.match(/^([^(\s]+)\(/);
+    if (parenMatch) return parenMatch[1];
+
+    // Colon format: src/App.tsx:7:9 - error TS...
+    const colonMatch = errorLine.match(/^(.+?\.\w+):\d+:\d+/);
+    if (colonMatch) return colonMatch[1];
+
+    // Simple format: src/components/Card.tsx: Missing import './Card.css'
+    const simpleMatch = errorLine.match(/^(src\/.+?\.\w+):\s/);
+    if (simpleMatch) return simpleMatch[1];
+
+    return null;
+}
+
+/**
+ * Extracts the module path from a tsc "no exported member" or "cannot find module" error.
+ * Returns the relative module specifier (e.g., './constants/routes').
+ */
+export function extractModulePathFromTscError(errorLine: string): string | null {
+    // tsc --pretty false outputs module paths in various quote-wrapped formats:
+    //   Module '"./constants/routes"' has no exported member 'ROUTES'.
+    //   Module '"../constants/routes"' has no exported member 'ROUTES'.
+    //   Cannot find module './constants/routes' or its corresponding type declarations.
+    // Use a broad regex that handles both: look for ./ or ../ after any combination of quotes
+    const match = errorLine.match(/[Mm]odule\s+['"]*(\.\.\/.+?|\.\/.+?)["']/);
+    if (match) return match[1];
+
+    const cantFindMatch = errorLine.match(/Cannot find module\s+['"]*(\.\.\/.+?|\.\/.+?)["']/);
+    if (cantFindMatch) return cantFindMatch[1];
+
+    return null;
+}
+
+/**
  * Formats verification results (Lint + TSC) into a string for the LLM.
  */
 export function formatVerificationErrorsForPrompt(

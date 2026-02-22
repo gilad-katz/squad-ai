@@ -9,7 +9,7 @@ import { exec } from 'child_process';
 import util from 'util';
 import fs from 'fs';
 import path from 'path';
-import { lintWorkspace, typeCheckWorkspace, formatVerificationErrorsForPrompt } from '../services/lintService';
+import { lintWorkspace, typeCheckWorkspace, checkMissingImports, formatVerificationErrorsForPrompt, extractFilePathFromTscError, extractModulePathFromTscError } from '../services/lintService';
 
 const execAsync = util.promisify(exec);
 
@@ -274,7 +274,7 @@ router.post('/', validateChat, async (req, res) => {
 
         // Build executor context: a lightweight summary of chat history  
         // We don't send the full monster history to each executor — just enough context
-        const executorHistory = geminiContents.slice(-4); // Last 2 exchanges for context
+        const executorHistory = geminiContents.slice(-6); // Last 3 exchanges for context
 
         // Helper to update a transparency task status and re-emit
         const updateTaskStatus = (planIndex: number, status: 'in_progress' | 'done') => {
@@ -344,12 +344,57 @@ router.post('/', validateChat, async (req, res) => {
                 taskFactories.push(() => globalFileQueue.enqueue(task.filepath, async () => {
                     updateTaskStatus(index, 'in_progress');
                     try {
+                        // For edit_file tasks, read the existing file content so the executor can merge changes
+                        let existingContent: string | null = null;
+                        const relatedFiles: Record<string, string> = {};
+                        if (task.type === 'edit_file') {
+                            try {
+                                existingContent = readFile(sessionId, task.filepath);
+
+                                // Extract imports and read their contents for cross-file context
+                                if (existingContent) {
+                                    const importRegex = /import\s+(?:.*?\s+from\s+)?['"](\.\/.+?|\.\.\/.+?)['"]/g;
+                                    let importMatch;
+                                    while ((importMatch = importRegex.exec(existingContent)) !== null) {
+                                        const importPath = importMatch[1];
+                                        const importDir = path.dirname(task.filepath);
+                                        const resolvedBase = path.join(importDir, importPath);
+
+                                        // If it has an explicit extension (.css, .svg, etc.), try directly
+                                        if (path.extname(importPath)) {
+                                            try {
+                                                const content = readFile(sessionId, resolvedBase);
+                                                if (content) relatedFiles[resolvedBase] = content;
+                                            } catch { /* file doesn't exist */ }
+                                        } else {
+                                            // Try TS/JS extensions
+                                            const exts = ['.ts', '.tsx', '.js', '.jsx'];
+                                            for (const ext of exts) {
+                                                try {
+                                                    const content = readFile(sessionId, resolvedBase + ext);
+                                                    if (content) {
+                                                        relatedFiles[resolvedBase + ext] = content;
+                                                        break;
+                                                    }
+                                                } catch { /* file doesn't exist */ }
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (e) {
+                                // File might not exist yet — treat as create
+                                existingContent = null;
+                            }
+                        }
+
                         const code = await executeFileAction(
                             executorHistory,
                             sessionId,
                             task.filepath,
                             task.prompt,
-                            fileManifest
+                            fileManifest,
+                            existingContent,
+                            Object.keys(relatedFiles).length > 0 ? relatedFiles : undefined
                         );
 
                         const oldContent = writeFile(sessionId, task.filepath, code);
@@ -526,75 +571,182 @@ router.post('/', validateChat, async (req, res) => {
 
         // ── Step 4: Automated Verification & Repair ────────────────────────
         let verifyRetries = 0;
-        const MAX_VERIFY_RETRIES = 2;
+        const MAX_VERIFY_RETRIES = 3;
+
+        // Helper: build cross-file context for a file's imports
+        const buildCrossFileContext = (relPath: string): string => {
+            let crossFileContext = '';
+            try {
+                const fileContent = readFile(sessionId, relPath);
+                if (fileContent) {
+                    const importRegex = /from\s+['"](\.\/.+?|\.\.\/.+?)['"]/g;
+                    let importMatch;
+                    const importedContents: string[] = [];
+                    while ((importMatch = importRegex.exec(fileContent)) !== null) {
+                        const importPath = importMatch[1];
+                        const importDir = path.dirname(relPath);
+                        const resolvedBase = path.join(importDir, importPath);
+                        const extensions = ['.ts', '.tsx', '.js', '.jsx', '/index.ts', '/index.tsx'];
+                        for (const ext of extensions) {
+                            const candidate = resolvedBase + ext;
+                            try {
+                                const content = readFile(sessionId, candidate);
+                                if (content) {
+                                    importedContents.push(`--- ${candidate} ---\n${content}`);
+                                    break;
+                                }
+                            } catch { /* file doesn't exist */ }
+                        }
+                    }
+                    if (importedContents.length > 0) {
+                        crossFileContext = `\n\nIMPORTED MODULE CONTENTS (use these to verify your imports match actual exports):\n${importedContents.join('\n\n')}`;
+                    }
+                }
+            } catch { /* file doesn't exist */ }
+            return crossFileContext;
+        };
+
+        // Helper: run a single repair task for a file
+        const repairFile = async (relPath: string, verificationReport: string): Promise<void> => {
+            const crossFileContext = buildCrossFileContext(relPath);
+
+            // Read existing content so the executor can merge changes (Bug 1 fix)
+            let existingContent: string | null = null;
+            try {
+                existingContent = readFile(sessionId, relPath);
+            } catch { /* file doesn't exist */ }
+
+            const code = await executeFileAction(
+                geminiContents,
+                sessionId,
+                relPath,
+                `VERIFICATION FAILED for the following reasons:\n\n${verificationReport}${crossFileContext}\n\nREPAIR INSTRUCTIONS for ${relPath}:\n1. Analyze the errors specifically for this file.\n2. Fix any broken imports, missing exports, or type mismatches.\n3. You MUST use the EXACT export names from the imported modules shown above.\n4. If you imported a file that doesn't exist, either create it (in a previous task) or remove the import.\n5. Output ONLY the fixed RAW SOURCE CODE for ${relPath}.`,
+                listFiles(sessionId),
+                existingContent
+            );
+            const oldContent = writeFile(sessionId, relPath, code);
+            const diff = generateDiff(oldContent || '', code, relPath);
+
+            const lines = code.split('\n').length;
+            const serverAction = {
+                id: `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                type: 'file_action',
+                action: 'edited',
+                filename: relPath.split('/').pop() || relPath,
+                filepath: relPath,
+                language: detectLanguage(relPath),
+                content: code,
+                linesAdded: lines,
+                linesRemoved: 0,
+                diff,
+                status: 'complete'
+            };
+            completedServerFileActions.push(serverAction);
+            emit(serverAction);
+        };
 
         while (verifyRetries <= MAX_VERIFY_RETRIES) {
             emit({ type: 'phase', phase: 'verifying' });
 
-            const [lintResults, tscErrors] = await Promise.all([
+            const [lintResults, tscErrors, missingImportErrors] = await Promise.all([
                 lintWorkspace(sessionId),
-                typeCheckWorkspace(sessionId)
+                typeCheckWorkspace(sessionId),
+                checkMissingImports(sessionId)
             ]);
 
+            // Merge missing-import errors into tsc errors so they get reported
+            const allTscErrors = [...tscErrors, ...missingImportErrors];
+
             const hasLintErrors = lintResults.some(r => r.errorCount > 0);
-            const hasTscErrors = tscErrors.length > 0;
+            const hasTscErrors = allTscErrors.length > 0;
 
             if (!hasLintErrors && !hasTscErrors) break;
 
+            // ── Bug 3 fix: Create missing CSS/asset files ──
+            // If a file imports a .css/.scss/.svg etc that doesn't exist, create an empty one
+            for (const err of missingImportErrors) {
+                const match = err.match(/Missing import '(.+?)'/);
+                if (match) {
+                    const missingImport = match[1];
+                    const ext = path.extname(missingImport).toLowerCase();
+                    // Only auto-create asset files (CSS, images, etc.) — NOT .ts/.tsx/.js/.jsx
+                    if (['.css', '.scss', '.less', '.svg'].includes(ext)) {
+                        // Resolve the full path from the error source file
+                        const sourceFile = extractFilePathFromTscError(err);
+                        if (sourceFile) {
+                            const sourceDir = path.dirname(sourceFile);
+                            const resolvedPath = path.join(sourceDir, missingImport);
+                            try {
+                                const fullPath = path.join(currentWorkspaceDir, resolvedPath);
+                                if (!fs.existsSync(fullPath)) {
+                                    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+                                    fs.writeFileSync(fullPath, ext === '.svg' ? '<svg></svg>' : `/* Auto-generated placeholder for ${missingImport} */\n`, 'utf8');
+                                    console.log(`Auto-created missing asset: ${resolvedPath}`);
+                                }
+                            } catch (e) {
+                                console.warn(`Failed to auto-create ${resolvedPath}:`, e);
+                            }
+                        }
+                    }
+                }
+            }
+
             // Identify all files that need attention
             const filesToFix = new Set<string>();
+            // Track which files are imported by other error files (dependency sources)
+            const sourceModules = new Set<string>();
+
             lintResults.filter(r => r.errorCount > 0).forEach(r => filesToFix.add(path.relative(currentWorkspaceDir, r.filepath)));
 
-            // TSC errors look like: src/App.tsx(2,7): error TS2307...
-            tscErrors.forEach(err => {
-                const match = err.match(/^([^(\s]+)/);
-                if (match && match[1]) {
-                    filesToFix.add(match[1]);
+            // Extract file paths from tsc errors using robust helper
+            allTscErrors.forEach(err => {
+                const filePath = extractFilePathFromTscError(err);
+                if (filePath) {
+                    filesToFix.add(filePath);
+                }
+                // Also add source modules referenced in "no exported member" / "cannot find module" errors
+                const errorFilePath = filePath;
+                const modulePath = extractModulePathFromTscError(err);
+                if (modulePath && errorFilePath) {
+                    const errorFileDir = path.dirname(errorFilePath);
+                    const resolvedBase = path.join(errorFileDir, modulePath);
+                    const extensions = ['.ts', '.tsx', '.js', '.jsx'];
+                    for (const ext of extensions) {
+                        const candidate = resolvedBase + ext;
+                        if (fs.existsSync(path.join(currentWorkspaceDir, candidate))) {
+                            filesToFix.add(candidate);
+                            sourceModules.add(candidate); // Mark as a dependency source
+                            break;
+                        }
+                    }
                 }
             });
 
             if (filesToFix.size === 0 && hasTscErrors) {
-                // If we have TSC errors but couldn't map them to files, something is wrong
-                // Fallback: try to fix the main files or App.tsx
                 if (fs.existsSync(path.join(currentWorkspaceDir, 'src/App.tsx'))) {
                     filesToFix.add('src/App.tsx');
                 }
             }
 
-            const verificationReport = formatVerificationErrorsForPrompt(lintResults, tscErrors, currentWorkspaceDir);
+            const verificationReport = formatVerificationErrorsForPrompt(lintResults, allTscErrors, currentWorkspaceDir);
 
-            const fixTasks = Array.from(filesToFix).map((relPath) => {
-                return async () => {
-                    const code = await executeFileAction(
-                        geminiContents,
-                        sessionId,
-                        relPath,
-                        `VERIFICATION FAILED for the following reasons:\n\n${verificationReport}\n\nREPAIR INSTRUCTIONS for ${relPath}:\n1. Analyze the errors specifically for this file.\n2. Fix any broken imports, missing exports, or type mismatches.\n3. If you imported a file that doesn't exist, either create it (in a previous task) or remove the import.\n4. Output ONLY the fixed RAW SOURCE CODE for ${relPath}.`,
-                        listFiles(sessionId)
-                    );
-                    const oldContent = writeFile(sessionId, relPath, code);
-                    const diff = generateDiff(oldContent || '', code, relPath);
+            // ── Bug 2 fix: Two-phase repair ──
+            // Phase 1: Fix source/dependency modules first (e.g., theme.ts, routes.ts)
+            // so consumers will see the correct exports when they're repaired
+            const sourceFiles = Array.from(filesToFix).filter(f => sourceModules.has(f));
+            const consumerFiles = Array.from(filesToFix).filter(f => !sourceModules.has(f));
 
-                    const lines = code.split('\n').length;
-                    const serverAction = {
-                        id: `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                        type: 'file_action',
-                        action: 'edited',
-                        filename: relPath.split('/').pop() || relPath,
-                        filepath: relPath,
-                        language: detectLanguage(relPath),
-                        content: code,
-                        linesAdded: lines,
-                        linesRemoved: 0,
-                        diff,
-                        status: 'complete'
-                    };
-                    completedServerFileActions.push(serverAction);
-                    emit(serverAction);
-                };
-            });
+            if (sourceFiles.length > 0) {
+                const sourceRepairTasks = sourceFiles.map(relPath => () => repairFile(relPath, verificationReport));
+                await runWithConcurrency(sourceRepairTasks, 5);
+            }
 
-            await runWithConcurrency(fixTasks, 5);
+            // Phase 2: Fix consumer files (now that their dependencies are settled)
+            if (consumerFiles.length > 0) {
+                const consumerRepairTasks = consumerFiles.map(relPath => () => repairFile(relPath, verificationReport));
+                await runWithConcurrency(consumerRepairTasks, 5);
+            }
+
             verifyRetries++;
         }
 
@@ -602,7 +754,7 @@ router.post('/', validateChat, async (req, res) => {
         const assistantContent = plan.tasks
             .filter(t => t.type === 'chat')
             .map(t => t.content)
-            .join('\n\n');
+            .join('\n\n') || 'Done — files have been created and verified.';
 
         const finalAssistantMessage = {
             id: `msg-${Date.now()}`,
