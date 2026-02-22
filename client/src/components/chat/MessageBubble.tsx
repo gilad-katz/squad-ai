@@ -31,7 +31,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
         return null;
     }
 
-    const hasFileActions = message.fileActions && message.fileActions.length > 0;
+    const mergedFileActions = [...(message.fileActions || []), ...(message.serverFileActions || [])];
+    const hasFileActions = mergedFileActions.length > 0;
     const hasGitActions = message.gitActions && message.gitActions.length > 0;
 
     // Agent message
@@ -45,22 +46,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
                     />
                 )}
 
-                {hasFileActions && (
-                    <div className={`px-4 py-3 space-y-2 ${message.transparency ? 'border-t border-gray-100' : ''}`}>
-                        {message.fileActions.map((fa) => (
-                            <FileActionCard key={fa.id} action={fa} />
-                        ))}
-                    </div>
-                )}
-
-                {hasGitActions && (
-                    <div className={`px-4 py-3 space-y-2 ${(message.transparency || hasFileActions) ? 'border-t border-gray-100' : ''}`}>
-                        <GitTerminalView actions={message.gitActions} isStreaming={message.status === 'streaming'} />
-                    </div>
-                )}
-
                 {message.displayContent && (
-                    <div className={`p-5 ${(message.transparency || hasFileActions || hasGitActions) ? 'border-t border-gray-100' : ''}`}>
+                    <div className={`p-5 ${message.transparency ? 'border-t border-gray-100' : ''}`}>
                         <div className="prose prose-blue max-w-none">
                             {message.status === 'streaming' ? (
                                 <div className="font-sans text-base text-gray-800 m-0 min-h-[1.5rem] whitespace-pre-wrap">
@@ -70,6 +57,20 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
                                 <MarkdownRenderer content={message.displayContent} />
                             )}
                         </div>
+                    </div>
+                )}
+
+                {hasFileActions && (
+                    <div className={`px-4 py-3 space-y-2 ${(message.transparency || message.displayContent) ? 'border-t border-gray-100' : ''}`}>
+                        {mergedFileActions.map((fa) => (
+                            <FileActionCard key={fa.id} action={fa} />
+                        ))}
+                    </div>
+                )}
+
+                {hasGitActions && (
+                    <div className={`px-4 py-3 space-y-2 ${(message.transparency || message.displayContent || hasFileActions) ? 'border-t border-gray-100' : ''}`}>
+                        <GitTerminalView actions={message.gitActions} isStreaming={message.status === 'streaming'} />
                     </div>
                 )}
 

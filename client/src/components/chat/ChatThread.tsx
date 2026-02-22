@@ -90,10 +90,12 @@ export const ChatThread: React.FC<ChatThreadProps> = ({ onRetry }) => {
         prevMessagesLen.current = messages.length;
     }, [messages.length, phase]);
 
-    // Indicator logic: show dots if we are thinking OR if we are responding but neither text nor transparency have arrived yet
+    // Indicator logic: show activity dots during active phases
     const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
     const isAssistantStarting = lastMsg?.role === 'assistant' && !lastMsg.displayContent && !lastMsg.transparency;
-    const showThinkingIndicator = phase === 'thinking' || (phase === 'responding' && isAssistantStarting);
+    const showThinkingIndicator = phase === 'thinking' || phase === 'planning' || phase === 'executing' || (phase === 'responding' && isAssistantStarting);
+
+    const phaseLabel = phase === 'planning' ? 'Planning...' : phase === 'executing' ? 'Generating files...' : 'Thinking...';
 
     return (
         <main ref={scrollerRef} onScroll={handleScroll} className="flex-1 w-full overflow-y-auto bg-gray-50 pt-24 pb-32">
@@ -124,10 +126,13 @@ export const ChatThread: React.FC<ChatThreadProps> = ({ onRetry }) => {
                         ))}
                         {showThinkingIndicator && (
                             <div className="flex justify-start w-full mb-12">
-                                <div className="flex gap-1.5 items-center bg-white border border-gray-200 rounded-2xl rounded-tl-sm shadow-sm px-5 py-4 ml-2">
-                                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-[bounce_1s_infinite_0ms]"></div>
-                                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-[bounce_1s_infinite_200ms]"></div>
-                                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-[bounce_1s_infinite_400ms]"></div>
+                                <div className="flex gap-2 items-center bg-white border border-gray-200 rounded-2xl rounded-tl-sm shadow-sm px-5 py-4 ml-2">
+                                    <div className="flex gap-1.5">
+                                        <div className="w-2 h-2 rounded-full bg-blue-500 animate-[bounce_1s_infinite_0ms]"></div>
+                                        <div className="w-2 h-2 rounded-full bg-blue-500 animate-[bounce_1s_infinite_200ms]"></div>
+                                        <div className="w-2 h-2 rounded-full bg-blue-500 animate-[bounce_1s_infinite_400ms]"></div>
+                                    </div>
+                                    <span className="text-xs text-gray-400 font-medium ml-1">{phaseLabel}</span>
                                 </div>
                             </div>
                         )}

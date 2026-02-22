@@ -1,4 +1,4 @@
-export type PhaseState = 'ready' | 'thinking' | 'building' | 'responding';
+export type PhaseState = 'ready' | 'thinking' | 'planning' | 'executing' | 'building' | 'responding';
 
 export interface TransparencyData {
     reasoning: string;
@@ -19,6 +19,8 @@ export interface FileAction {
     linesAdded: number;
     linesRemoved: number;
     warnings?: number;      // lint warning count (placeholder)
+    status?: 'executing' | 'complete';
+    prompt?: string;        // original prompt used for image generation
 }
 
 export interface GitAction {
@@ -36,6 +38,7 @@ export interface Message {
     displayContent: string;          // stripped of structured blocks
     transparency: TransparencyData | null;
     fileActions: FileAction[];
+    serverFileActions: FileAction[];
     gitActions: GitAction[];
     status: 'complete' | 'streaming' | 'error';
     timestamp: number;

@@ -3,11 +3,12 @@ import path from 'path';
 import { diffLines } from 'diff';
 
 const WORKSPACE_ROOT = path.join(__dirname, '../../workspace');
+const TEMPLATE_ROOT = path.join(__dirname, '../../templates');
 
 /**
  * Resolve a safe path within the workspace, preventing traversal attacks.
  */
-function safePath(sessionId: string, filepath: string): string {
+export function safePath(sessionId: string, filepath: string): string {
     const sessionDir = path.join(WORKSPACE_ROOT, sessionId);
     const resolved = path.resolve(sessionDir, filepath);
     if (!resolved.startsWith(sessionDir + path.sep)) {
@@ -17,12 +18,37 @@ function safePath(sessionId: string, filepath: string): string {
 }
 
 /**
- * Ensure the workspace directory for a session exists.
+ * Copy template files recursively into a target directory.
  */
-export function ensureWorkspace(sessionId: string): string {
+function copyTemplates(srcDir: string, destDir: string) {
+    if (!fs.existsSync(srcDir)) return;
+    for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+        const srcPath = path.join(srcDir, entry.name);
+        const destPath = path.join(destDir, entry.name);
+        if (entry.isDirectory()) {
+            fs.mkdirSync(destPath, { recursive: true });
+            copyTemplates(srcPath, destPath);
+        } else {
+            fs.copyFileSync(srcPath, destPath);
+        }
+    }
+}
+
+/**
+ * Ensure the workspace directory for a session exists.
+ * On first creation, copies standard project scaffolding templates.
+ */
+export function ensureWorkspace(sessionId: string): { dir: string; isNew: boolean } {
     const dir = path.join(WORKSPACE_ROOT, sessionId);
+    const isNew = !fs.existsSync(dir);
     fs.mkdirSync(dir, { recursive: true });
-    return dir;
+
+    // Copy template scaffolding into brand-new workspaces
+    if (isNew) {
+        copyTemplates(TEMPLATE_ROOT, dir);
+    }
+
+    return { dir, isNew };
 }
 
 /**
@@ -69,6 +95,9 @@ export function deleteFile(sessionId: string, filepath: string): void {
     }
 }
 
+// Directories to exclude from file listings
+const EXCLUDED_DIRS = new Set(['node_modules', '.git', 'dist', '.vite']);
+
 /**
  * List all files in a workspace recursively.
  */
@@ -79,6 +108,7 @@ export function listFiles(sessionId: string): string[] {
     const results: string[] = [];
     function walk(dir: string) {
         for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (EXCLUDED_DIRS.has(entry.name)) continue;
             const full = path.join(dir, entry.name);
             if (entry.isDirectory()) {
                 walk(full);

@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 const MessageSchema = z.object({
     role: z.enum(['user', 'assistant']),
-    content: z.string().min(1).max(32000),
+    content: z.string().min(1).max(10000000), // increased to 10M to support massive multi-file code generation turns
 });
 
 const ChatBodySchema = z.object({

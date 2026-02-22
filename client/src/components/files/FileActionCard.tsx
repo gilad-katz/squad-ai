@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import type { FileAction } from '../../types';
-import { FilePlus, FileEdit, Trash2, ExternalLink } from 'lucide-react';
+import { FilePlus, FileEdit, Trash2, ExternalLink, Loader2 } from 'lucide-react';
 import { FileContentModal } from './FileContentModal';
+import { useSessionStore } from '../../store/session';
 
 interface FileActionCardProps {
     action: FileAction;
@@ -20,25 +21,44 @@ const langIcons: Record<string, string> = {
 
 export const FileActionCard: React.FC<FileActionCardProps> = ({ action }) => {
     const [showModal, setShowModal] = useState(false);
+    const sessionId = useSessionStore(s => s.sessionId);
     const config = actionConfig[action.action];
     const ActionIcon = config.icon;
     const langBadge = langIcons[action.language] || action.language?.toUpperCase()?.slice(0, 3) || 'TXT';
 
+    const isImage = action.language === 'image' || ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(action.filepath.split('.').pop()?.toLowerCase() || '');
+
     return (
         <>
             <button
-                onClick={() => setShowModal(true)}
+                onClick={() => action.status !== 'executing' && setShowModal(true)}
                 className={`
                     w-full flex items-center gap-3 px-4 py-3
-                    bg-gray-900 hover:bg-gray-800 
+                    bg-gray-900 ${action.status === 'executing' ? 'opacity-80 cursor-wait' : 'hover:bg-gray-800 cursor-pointer'} 
                     border ${config.borderColor} rounded-xl
-                    transition-all duration-150 cursor-pointer
+                    transition-all duration-150
                     group text-left
                 `}
+                disabled={action.status === 'executing'}
             >
-                {/* File icon */}
-                <div className={`flex items-center justify-center w-9 h-9 rounded-lg ${config.bgAccent} flex-shrink-0`}>
-                    <ActionIcon className="w-4.5 h-4.5 text-gray-300" />
+                {/* File icon / Image Preview */}
+                <div className={`flex items-center justify-center w-9 h-9 rounded-lg ${config.bgAccent} flex-shrink-0 overflow-hidden`}>
+                    {action.status === 'executing' ? (
+                        <Loader2 className="w-4.5 h-4.5 text-gray-300 animate-spin" />
+                    ) : isImage && sessionId ? (
+                        <img
+                            src={`/api/files/${sessionId}/raw?path=${encodeURIComponent(action.filepath)}`}
+                            alt={action.filename}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                                // fallback to icon on error
+                                (e.target as HTMLElement).style.display = 'none';
+                                e.currentTarget.parentElement?.classList.add('fallback-icon');
+                            }}
+                        />
+                    ) : (
+                        <ActionIcon className="w-4.5 h-4.5 text-gray-300" />
+                    )}
                 </div>
 
                 {/* Filename + action label */}
@@ -53,6 +73,9 @@ export const FileActionCard: React.FC<FileActionCardProps> = ({ action }) => {
                     </div>
                     <div className="text-xs text-gray-500 mt-0.5">
                         {config.label}
+                        {action.status === 'executing' && (
+                            <span className="ml-1.5 text-cyan-500 animate-pulse text-[10px] font-bold tracking-wider uppercase">Executing</span>
+                        )}
                         {action.filepath !== action.filename && (
                             <span className="ml-1.5 text-gray-600">{action.filepath}</span>
                         )}
@@ -79,7 +102,9 @@ export const FileActionCard: React.FC<FileActionCardProps> = ({ action }) => {
                 </div>
 
                 {/* Open icon */}
-                <ExternalLink className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors flex-shrink-0" />
+                {action.status !== 'executing' && (
+                    <ExternalLink className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors flex-shrink-0" />
+                )}
             </button>
 
             {showModal && (

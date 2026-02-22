@@ -19,7 +19,7 @@ export function useChat() {
 
         if (!content || !content.trim()) return;
 
-        // Only append new user message if this isn't a retry, or if it's the first time
+        // Only append new user message if this isn't a retry
         if (!retryMsgId) {
             store.appendUserMessage(content);
         }
@@ -27,50 +27,65 @@ export function useChat() {
 
         const currentMessages = useSessionStore.getState().messages;
         const apiMessages = currentMessages
-            .filter(m => m.status === 'complete' || m.role === 'user') // drop failed partial msg from history targeting
+            .filter(m => m.status === 'complete' || m.role === 'user')
             .map(m => ({ role: m.role, content: m.content }));
 
         const agentMsgId = useSessionStore.getState().appendAgentMessageStart();
-        let firstTokenReceived = false;
 
-        const sessionId = useSessionStore.getState().sessionId;
+        // Generate sessionId client-side if this is the first message,
+        // and set it immediately so duplicate requests share the same ID.
+        let sessionId = useSessionStore.getState().sessionId;
+        if (!sessionId) {
+            sessionId = `session-${Date.now()}`;
+            useSessionStore.getState().setSessionId(sessionId);
+        }
 
         await consumeStream(
             apiMessages,
             sessionId,
+            // onDelta — conversational text from the orchestrator chat tasks
             (delta) => {
-                if (!firstTokenReceived) {
-                    useSessionStore.getState().setPhase('responding');
-                    firstTokenReceived = true;
-                }
                 useSessionStore.getState().appendAgentDelta(agentMsgId, delta);
             },
+            // onDone — finalize
             (usage, returnedSessionId) => {
                 useSessionStore.getState().finaliseAgentMessage(agentMsgId);
 
-                // Store sessionId from server
                 if (returnedSessionId) {
                     useSessionStore.getState().setSessionId(returnedSessionId);
                 }
 
                 if (usage) {
                     const totalTokens = usage.input_tokens + usage.output_tokens;
-                    // Gemini 2.5 flash is about 1M tokens, so we use 1000000 as the context limit
                     const contextLimit = 1000000;
                     if (totalTokens > contextLimit * 0.80) {
                         useSessionStore.getState().setContextWarning(true);
                     }
                 }
             },
+            // onError
             (msg) => {
                 useSessionStore.getState().setAgentError(agentMsgId, msg);
             },
+            // onGitResult
             (index, output, error) => {
                 useSessionStore.getState().updateGitActionResult(agentMsgId, index, output, error);
             },
+            // onSessionId
             (sid) => {
-                // Handle session event
                 useSessionStore.getState().setSessionId(sid);
+            },
+            // onFileAction — discrete file events from the orchestrator dispatcher
+            (action) => {
+                useSessionStore.getState().addServerFileAction(agentMsgId, action);
+            },
+            // onPhase — phase transitions from the backend orchestrator
+            (phase) => {
+                useSessionStore.getState().setPhase(phase);
+            },
+            // onTransparency — reasoning and task breakdown from the orchestrator
+            (data) => {
+                useSessionStore.getState().setTransparency(agentMsgId, data);
             }
         );
     };

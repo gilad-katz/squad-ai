@@ -1,4 +1,4 @@
-import type { Message } from '../types';
+import type { Message, FileAction, PhaseState, TransparencyData } from '../types';
 
 export async function consumeStream(
     messages: Pick<Message, 'role' | 'content'>[],
@@ -7,7 +7,10 @@ export async function consumeStream(
     onDone: (usage?: { input_tokens: number, output_tokens: number }, sessionId?: string) => void,
     onError: (msg: string) => void,
     onGitResult?: (index: number, output?: string, error?: string) => void,
-    onSessionId?: (id: string) => void
+    onSessionId?: (id: string) => void,
+    onFileAction?: (action: FileAction) => void,
+    onPhase?: (phase: PhaseState) => void,
+    onTransparency?: (data: TransparencyData) => void
 ): Promise<void> {
     try {
         const response = await fetch('/api/chat', {
@@ -43,7 +46,10 @@ export async function consumeStream(
                     if (evt.type === 'done') onDone(evt.usage, evt.sessionId);
                     if (evt.type === 'error') onError(evt.message);
                     if (evt.type === 'git_result' && onGitResult) onGitResult(evt.index, evt.output, evt.error);
+                    if (evt.type === 'file_action' && onFileAction) onFileAction(evt);
                     if (evt.type === 'session' && onSessionId) onSessionId(evt.sessionId);
+                    if (evt.type === 'phase' && onPhase) onPhase(evt.phase);
+                    if (evt.type === 'transparency' && onTransparency) onTransparency(evt.data);
                 } catch (err) {
                     console.warn('Failed to parse SSE line:', line);
                 }
@@ -53,3 +59,4 @@ export async function consumeStream(
         onError(err.message || 'Stream connection failed');
     }
 }
+
