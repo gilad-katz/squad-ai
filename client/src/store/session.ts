@@ -64,6 +64,28 @@ function stripStructuredBlocks(content: string, fileActions?: FileAction[]): str
         result = result.slice(0, gStart).trim();
     }
 
+    // Strip IMAGE_ACTIONS block
+    const iStart = result.indexOf('IMAGE_ACTIONS_START');
+    const iEnd = result.indexOf('IMAGE_ACTIONS_END');
+    if (iStart >= 0 && iEnd >= 0) {
+        const before = result.slice(0, iStart).trim();
+        const after = result.slice(iEnd + 'IMAGE_ACTIONS_END'.length).trim();
+        result = (before + '\n\n' + after).trim();
+    } else if (iStart >= 0) {
+        result = result.slice(0, iStart).trim();
+    }
+
+    // Strip CONFIRM_ACTIONS block
+    const cStart = result.indexOf('CONFIRM_ACTIONS_START');
+    const cEnd = result.indexOf('CONFIRM_ACTIONS_END');
+    if (cStart >= 0 && cEnd >= 0) {
+        const before = result.slice(0, cStart).trim();
+        const after = result.slice(cEnd + 'CONFIRM_ACTIONS_END'.length).trim();
+        result = (before + '\n\n' + after).trim();
+    } else if (cStart >= 0) {
+        result = result.slice(0, cStart).trim();
+    }
+
     // Strip out ugly raw Git Terminal Output logs
     // We want the agent to summarize these naturally, but they often just parrot the raw strings.
     const gitLogRegex = /(\[[a-zA-Z0-9_-]+ [a-f0-9]{7}\].*?|Enumerating objects:.*?\d+.*?(done\.|pack-reused \d+)(?:\s*To https?:\/\/.*?\.git\s+[a-f0-9]+\.\.[a-f0-9]+\s+[a-zA-Z0-9_-]+\s*->\s*[a-zA-Z0-9_-]+)?)/gs;

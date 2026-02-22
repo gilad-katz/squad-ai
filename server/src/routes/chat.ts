@@ -63,6 +63,52 @@ function extractGitActions(fullText: string): GitActionRaw[] {
     return [];
 }
 
+interface ImageActionRaw {
+    prompt: string;
+    filename: string;
+    filepath: string;
+}
+
+/**
+ * Parse IMAGE_ACTIONS block from the completed LLM response.
+ */
+function extractImageActions(fullText: string): ImageActionRaw[] {
+    const startIdx = fullText.indexOf('IMAGE_ACTIONS_START');
+    const endIdx = fullText.indexOf('IMAGE_ACTIONS_END');
+    if (startIdx === -1 || endIdx === -1) return [];
+
+    const jsonBlock = fullText.slice(startIdx + 'IMAGE_ACTIONS_START'.length, endIdx).trim();
+    try {
+        const match = jsonBlock.match(/\[[\s\S]*\]/);
+        if (match) return JSON.parse(match[0]);
+    } catch (err) {
+        console.warn('Failed to parse IMAGE_ACTIONS JSON:', err);
+    }
+    return [];
+}
+
+interface ConfirmActionRaw {
+    question: string;
+}
+
+/**
+ * Parse CONFIRM_ACTIONS block from the completed LLM response.
+ */
+function extractConfirmActions(fullText: string): ConfirmActionRaw[] {
+    const startIdx = fullText.indexOf('CONFIRM_ACTIONS_START');
+    const endIdx = fullText.indexOf('CONFIRM_ACTIONS_END');
+    if (startIdx === -1 || endIdx === -1) return [];
+
+    const jsonBlock = fullText.slice(startIdx + 'CONFIRM_ACTIONS_START'.length, endIdx).trim();
+    try {
+        const match = jsonBlock.match(/\[[\s\S]*\]/);
+        if (match) return JSON.parse(match[0]);
+    } catch (err) {
+        console.warn('Failed to parse CONFIRM_ACTIONS JSON:', err);
+    }
+    return [];
+}
+
 // Simplify classification for MVP
 function classifyError(err: any): string {
     if (err?.message?.includes('429')) return 'Rate limit exceeded. Please try again later.';
@@ -102,7 +148,7 @@ router.post('/', validateChat, async (req, res) => {
                 model: process.env.MODEL_ID || 'gemini-2.5-flash',
                 contents: geminiContents,
                 config: {
-                    systemInstruction: systemPrompt + `\n\nYour current workspace Session ID is: ${sessionId}\n\nNote: If you output a GIT_ACTIONS block, the system will execute it and immediately return the terminal output back to you so you can analyze it for the user.`
+                    systemInstruction: systemPrompt + `\n\nYour current workspace Session ID is: ${sessionId}\n\nCRITICAL: If you output a GIT_ACTIONS, FILE_ACTIONS, IMAGE_ACTIONS, or CONFIRM_ACTIONS block, DO NOT provide any conversational response detailing what you are about to do or predicting the output. Just output the action block. The system will execute it and return the actual terminal output to you so you can provide an accurate summary in the next turn.`
                 }
             });
 
@@ -122,6 +168,15 @@ router.post('/', validateChat, async (req, res) => {
 
             // Append the assistant's own response to the context window so it remembers what it just did
             geminiContents.push({ role: 'model', parts: [{ text: fullText }] });
+
+            // Process Confirm Actions (Highest Priority Interruption)
+            const confirmActions = extractConfirmActions(fullText);
+            if (confirmActions.length > 0) {
+                // We just echo the question and break the loop so the user has to respond.
+                const question = confirmActions[0].question;
+                emit({ type: 'delta', text: `\n\n**Confirmation Required:** ${question}` });
+                break;
+            }
 
             // Process File Actions
             const fileActions = extractFileActions(fullText);
@@ -241,7 +296,7 @@ router.post('/', validateChat, async (req, res) => {
                 if (systemFeedback.trim()) {
                     geminiContents.push({
                         role: 'user',
-                        parts: [{ text: `SYSTEM_FEEDBACK:\nThe following Git operations were executed by the system on your behalf:\n${systemFeedback}\n\nCRITICAL INSTRUCTION: Provide a 1-2 sentence conversational summary of this outcome to the user. DO NOT echo, quote, or paste the raw terminal logs. DO NOT use markdown headers to describe the output. Just speak naturally, like "I have successfully committed and pushed your changes to the main branch."` }]
+                        parts: [{ text: `SYSTEM_FEEDBACK:\nThe following Git operations were executed by the system on your behalf:\n${systemFeedback}\n\nCRITICAL INSTRUCTION: Analyze the exact terminal logs above and provide a 1-2 sentence conversational summary of what actually happened. Pay close attention to git CLI messages (e.g., if there is nothing to commit, or if the push was up-to-date, state that). DO NOT assume success if the logs show no changes were made. DO NOT echo, quote, or paste the raw terminal logs. DO NOT use markdown headers to describe the output. Just speak naturally.` }]
                     });
                     // Force a newline delimiter so the UI renders the follow-up text cleanly
                     emit({ type: 'delta', text: `\n\n` });
@@ -249,7 +304,82 @@ router.post('/', validateChat, async (req, res) => {
                 }
             }
 
-            // No Git Operations triggered a feedback loop, so we break normally.
+            // Process Image Actions
+            const imageActions = extractImageActions(fullText);
+            if (imageActions.length > 0) {
+                const workspaceDir = ensureWorkspace(sessionId);
+                let systemFeedback = '';
+
+                for (const [index, ia] of imageActions.entries()) {
+                    try {
+                        emit({ type: 'delta', text: `\n\n*Generating image: ${ia.filename}...*` });
+
+                        const response = await ai.models.generateContent({
+                            model: "gemini-2.5-flash-image",
+                            contents: ia.prompt,
+                        });
+
+                        const candidate = response.candidates?.[0];
+                        if (!candidate || !candidate.content || !candidate.content.parts) {
+                            throw new Error('No candidates or parts returned from Gemini API.');
+                        }
+
+                        let imageBuffer: Buffer | null = null;
+
+                        for (const part of candidate.content.parts) {
+                            if (part.inlineData && part.inlineData.data) {
+                                imageBuffer = Buffer.from(part.inlineData.data, "base64");
+                                break;
+                            }
+                        }
+
+                        if (!imageBuffer) {
+                            throw new Error('No image data found in Gemini API response.');
+                        }
+
+                        const fullPath = path.join(workspaceDir, ia.filepath);
+                        // Ensure directory exists
+                        const dir = path.dirname(fullPath);
+                        if (!fs.existsSync(dir)) {
+                            fs.mkdirSync(dir, { recursive: true });
+                        }
+
+                        fs.writeFileSync(fullPath, imageBuffer);
+
+                        // Tell the frontend a file was created
+                        emit({
+                            type: 'file_action',
+                            filename: ia.filename,
+                            filepath: ia.filepath,
+                            language: 'image',
+                            action: 'created',
+                            content: `[Image generated: ${ia.filepath}]`,
+                            linesAdded: 0,
+                            linesRemoved: 0,
+                            diff: null
+                        });
+
+                        systemFeedback += `\n[Image Generation Success for ${ia.filename}]: Image successfully saved to ${ia.filepath}`;
+
+                    } catch (err: any) {
+                        console.error('Image generation failed:', err);
+                        const errorOut = err.message || 'Unknown error';
+                        emit({ type: 'delta', text: `\n\n**Image Generation Error:** Failed to generate ${ia.filename}: ${errorOut}` });
+                        systemFeedback += `\n[Image Generation Failed for ${ia.filename}]: ${errorOut}`;
+                    }
+                }
+
+                if (systemFeedback.trim()) {
+                    geminiContents.push({
+                        role: 'user',
+                        parts: [{ text: `SYSTEM_FEEDBACK:\nThe following Image Generation operations were executed by the system on your behalf:\n${systemFeedback}\n\nCRITICAL INSTRUCTION: Provide a 1-2 sentence conversational summary of this outcome to the user. DO NOT echo, quote, or paste the raw system logs. Just speak naturally to let the user know if the image generation succeeded or failed.` }]
+                    });
+                    emit({ type: 'delta', text: `\n\n` });
+                    continue;
+                }
+            }
+
+            // No Git or Image Operations triggered a feedback loop, so we break normally.
             break;
         }
 
