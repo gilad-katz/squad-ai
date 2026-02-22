@@ -3,7 +3,7 @@ import type { Message } from '../../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { TransparencyPanel } from '../transparency/TransparencyPanel';
 import { FileActionCard } from '../files/FileActionCard';
-import { GitActionCard } from './GitActionCard';
+import { GitTerminalView } from './GitTerminalView';
 
 interface MessageBubbleProps {
     message: Message;
@@ -55,9 +55,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
 
                 {hasGitActions && (
                     <div className={`px-4 py-3 space-y-2 ${(message.transparency || hasFileActions) ? 'border-t border-gray-100' : ''}`}>
-                        {message.gitActions.map((ga) => (
-                            <GitActionCard key={ga.id} action={ga} isStreaming={message.status === 'streaming'} />
-                        ))}
+                        <GitTerminalView actions={message.gitActions} isStreaming={message.status === 'streaming'} />
                     </div>
                 )}
 

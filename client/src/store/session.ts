@@ -64,9 +64,9 @@ function stripStructuredBlocks(content: string, fileActions?: FileAction[]): str
         result = result.slice(0, gStart).trim();
     }
 
-    // Strip out ugly raw Git Terminal Output logs (e.g., [main 736d5e7] FEAT: ..., Enumerating objects: 4, done.)
+    // Strip out ugly raw Git Terminal Output logs
     // We want the agent to summarize these naturally, but they often just parrot the raw strings.
-    const gitLogRegex = /(\[main [a-f0-9]{7}\].*?|Enumerating objects:.*?\d+.*?(done\.|pack-reused \d+)(?:\s*To https?:\/\/.*?\.git\s+[a-f0-9]+\.\.[a-f0-9]+\s+[a-zA-Z0-9_-]+\s*->\s*[a-zA-Z0-9_-]+)?)/gs;
+    const gitLogRegex = /(\[[a-zA-Z0-9_-]+ [a-f0-9]{7}\].*?|Enumerating objects:.*?\d+.*?(done\.|pack-reused \d+)(?:\s*To https?:\/\/.*?\.git\s+[a-f0-9]+\.\.[a-f0-9]+\s+[a-zA-Z0-9_-]+\s*->\s*[a-zA-Z0-9_-]+)?)/gs;
     result = result.replace(gitLogRegex, '').replace(/\n{3,}/g, '\n\n').trim();
 
     // If we have file actions, strip redundant code blocks from the markdown

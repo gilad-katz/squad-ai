@@ -36,8 +36,8 @@ export const GitActionCard: React.FC<GitActionCardProps> = ({ action, isStreamin
 
                 <div className="flex items-center gap-2 flex-shrink-0">
                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md ring-1 ring-inset ${isStreaming ? 'bg-blue-50 text-blue-700 ring-blue-300' :
-                            action.error ? 'bg-red-50 text-red-700 ring-red-300' :
-                                'bg-white text-gray-700 ring-gray-300'
+                        action.error ? 'bg-red-50 text-red-700 ring-red-300' :
+                            'bg-white text-gray-700 ring-gray-300'
                         }`}>
                         {isStreaming && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>}
                         {!isStreaming && <div className={`w-1.5 h-1.5 rounded-full ${action.error ? 'bg-red-500' : 'bg-gray-400'}`}></div>}

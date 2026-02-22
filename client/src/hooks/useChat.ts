@@ -55,8 +55,8 @@ export function useChat() {
 
                 if (usage) {
                     const totalTokens = usage.input_tokens + usage.output_tokens;
-                    // Gemini 2.5 flash is about 1M tokens, but we use Sonnet 4.6 MVP numbers as spec baseline (180k * 0.8)
-                    const contextLimit = 180000;
+                    // Gemini 2.5 flash is about 1M tokens, so we use 1000000 as the context limit
+                    const contextLimit = 1000000;
                     if (totalTokens > contextLimit * 0.80) {
                         useSessionStore.getState().setContextWarning(true);
                     }

@@ -1,13 +1,21 @@
-const { GoogleGenAI } = require('@google/genai');
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import * as dotenv from 'dotenv';
+dotenv.config();
+
+const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
 async function run() {
-  const stream = await ai.models.generateContentStream({
-    model: 'gemini-2.5-flash',
-    contents: [{ role: 'user', parts: [{ text: 'Say hi' }] }]
-  });
-  for await (const chunk of stream) {
-    console.log("Chunk text:", chunk.text);
-    if (chunk.usageMetadata) console.log("Usage:", chunk.usageMetadata);
+  try {
+    const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const result = await model.generateContentStream('Tell me a short story about a brave knight.');
+    for await (const chunk of result.stream) {
+      if (chunk.usageMetadata) {
+        console.log('usageMetadata:', chunk.usageMetadata);
+      }
+    }
+  } catch (error) {
+    console.error('Error:', error);
   }
 }
-run().catch(console.error);
+
+run();

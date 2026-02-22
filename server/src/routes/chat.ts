@@ -116,7 +116,7 @@ router.post('/', validateChat, async (req, res) => {
                 if (chunk.usageMetadata) {
                     // Just take the latest token counts for simplicity
                     usageTotal.input_tokens = chunk.usageMetadata.promptTokenCount || usageTotal.input_tokens;
-                    usageTotal.output_tokens += (chunk.usageMetadata.candidatesTokenCount || 0);
+                    usageTotal.output_tokens = chunk.usageMetadata.candidatesTokenCount || usageTotal.output_tokens;
                 }
             }
 
@@ -216,13 +216,17 @@ router.post('/', validateChat, async (req, res) => {
 
                         try {
                             const env = { ...process.env, GIT_CEILING_DIRECTORIES: path.dirname(workspaceDir) };
-                            const { stdout, stderr } = await execAsync(ga.command, { cwd: workspaceDir, env });
+                            let cmdToRun = ga.command;
+                            if (cmdToRun.trim() === 'git push') {
+                                cmdToRun = 'git push -u origin HEAD';
+                            }
+                            const { stdout, stderr } = await execAsync(cmdToRun, { cwd: workspaceDir, env });
                             const out = (stdout || stderr || '').trim() || 'Command completed successfully.';
 
                             emit({ type: 'git_result', index, output: out });
 
                             // Let the user know it succeeded and to check the modal for the blob
-                            emit({ type: 'delta', text: `\n\n*Successfully ran \`${ga.command}\`. Check the action card for logs.*` });
+                            emit({ type: 'delta', text: `\n\n*Successfully ran \`${cmdToRun}\`. Check the terminal view for logs.*` });
                             systemFeedback += `\n[Git Execute Success: ${ga.command}]:\n${out}`;
                         } catch (err: any) {
                             console.error('Git command failed:', err);
