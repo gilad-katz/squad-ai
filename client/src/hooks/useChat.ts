@@ -132,6 +132,10 @@ export function useChat() {
             // onTransparency — reasoning and task breakdown from the orchestrator
             (data) => {
                 useSessionStore.getState().setTransparency(agentMsgId, data);
+            },
+            // onPreview — dev server URL
+            (url) => {
+                useSessionStore.getState().setPreviewUrl(url);
             }
         );
     };

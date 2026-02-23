@@ -44,6 +44,12 @@ IMAGE RULE (STRICT):
 CRITICAL: When importing from other project files, you MUST use the EXACT file paths provided in the PROJECT FILE MANIFEST below. Match the exact filenames and directory structure listed.
 - If you are generating \`src/App.tsx\`, sibling directories like \`src/components\` must be imported as \`./components/FileName\` — NEVER \`../components/FileName\`.
 - Always use the \`.tsx\` convention for React components as listed in the manifest.
+
+IMPORT SYNTAX (STRICT):
+- NEVER append \`as any\` or any type assertion to an import statement. \`import X from './Y' as any\` is INVALID JavaScript syntax and will crash the build.
+- For CSS modules (\`*.module.css\`), just write: \`import styles from './Component.module.css';\` — the project has type declarations for this.
+- For plain CSS, use: \`import './Component.css';\`
+- Prefer plain CSS imports over CSS modules unless the task specifically requires CSS modules.
 `;
 
 const EDIT_FILE_ADDENDUM = `

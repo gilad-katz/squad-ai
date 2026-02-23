@@ -7,6 +7,8 @@ interface SessionStore {
     phase: PhaseState;
     contextWarning: boolean;
     sessionId: string | null;
+    previewUrl: string | null;
+    setPreviewUrl: (url: string | null) => void;
     appendUserMessage: (content: string, attachments?: Message['attachments']) => void;
     appendAgentMessageStart: () => string;   // returns new message id
     appendAgentDelta: (id: string, delta: string) => void;
@@ -29,6 +31,9 @@ export const useSessionStore = create<SessionStore>((set) => ({
     phase: 'ready',
     contextWarning: false,
     sessionId: null,
+    previewUrl: null,
+
+    setPreviewUrl: (url) => set({ previewUrl: url }),
 
     appendUserMessage: (content, attachments) => set(s => ({
         messages: [...s.messages, {

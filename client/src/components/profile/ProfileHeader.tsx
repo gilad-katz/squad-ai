@@ -1,7 +1,8 @@
-import React from 'react';
 import { PhaseBadge } from '../ui/PhaseBadge';
 import { GitHeaderButton } from '../settings/GitSettings';
 import type { PhaseState } from '../../types';
+import { useSessionStore } from '../../store/session';
+import { ExternalLink } from 'lucide-react';
 
 interface ProfileHeaderProps {
     phase: PhaseState;
@@ -9,6 +10,8 @@ interface ProfileHeaderProps {
 }
 
 export const ProfileHeader: React.FC<ProfileHeaderProps> = ({ phase, onNewSession }) => {
+    const previewUrl = useSessionStore(state => state.previewUrl);
+
     return (
         <header className="fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-200 px-6 flex items-center justify-between z-10">
             <div className="flex items-center gap-4">
@@ -30,6 +33,17 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({ phase, onNewSessio
             </div>
 
             <div className="flex items-center gap-3">
+                {previewUrl && (
+                    <a
+                        href={previewUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-50 text-blue-700 text-sm font-semibold hover:bg-blue-100 transition-colors border border-blue-200"
+                    >
+                        <ExternalLink className="w-4 h-4" />
+                        View App
+                    </a>
+                )}
                 <GitHeaderButton />
                 <PhaseBadge phase={phase} />
                 <button

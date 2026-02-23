@@ -10,7 +10,8 @@ export async function consumeStream(
     onSessionId?: (id: string) => void,
     onFileAction?: (action: FileAction) => void,
     onPhase?: (phase: PhaseState) => void,
-    onTransparency?: (data: TransparencyData) => void
+    onTransparency?: (data: TransparencyData) => void,
+    onPreview?: (url: string) => void
 ): Promise<void> {
     try {
         const response = await fetch('/api/chat', {
@@ -50,6 +51,7 @@ export async function consumeStream(
                     if (evt.type === 'session' && onSessionId) onSessionId(evt.sessionId);
                     if (evt.type === 'phase' && onPhase) onPhase(evt.phase);
                     if (evt.type === 'transparency' && onTransparency) onTransparency(evt.data);
+                    if (evt.type === 'preview' && onPreview) onPreview(evt.url);
                 } catch (err) {
                     console.warn('Failed to parse SSE line:', line);
                 }

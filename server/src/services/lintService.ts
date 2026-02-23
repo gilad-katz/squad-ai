@@ -87,7 +87,10 @@ export async function typeCheckWorkspace(sessionId: string): Promise<string[]> {
         // If local tsc doesn't exist, fallback to npx
         const cmd = fs.existsSync(tscPath) ? tscPath : 'npx tsc';
 
-        await execAsync(`${cmd} --noEmit --pretty false`, { cwd: workspaceDir });
+        await execAsync(`${cmd} --noEmit --pretty false`, {
+            cwd: workspaceDir,
+            maxBuffer: 1024 * 1024 // 1MB buffer for large error outputs
+        });
         return []; // No errors
     } catch (err: any) {
         let output = '';
@@ -102,7 +105,10 @@ export async function typeCheckWorkspace(sessionId: string): Promise<string[]> {
             const lines = output.split('\n').filter(line =>
                 line.includes('error TS') ||
                 line.includes('cannot find module') ||
-                line.includes('no exported member')
+                line.includes('no exported member') ||
+                line.includes('expected') ||  // Catch syntax errors like "; expected"
+                line.includes('Unexpected token') ||
+                /\(.\d+,.d+\): error/.test(line) // Robust check for file(line,col): error format
             );
 
             if (lines.length > 0) return lines;

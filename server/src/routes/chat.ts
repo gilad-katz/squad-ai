@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { validateChat } from '../middleware/validateChat';
 import { ai } from '../services/gemini';
-import { ensureWorkspace, writeFile, deleteFile, generateDiff, listFiles, readFile } from '../services/fileService';
+import { ensureWorkspace, writeFile, deleteFile, generateDiff, listFiles, readFile, installDependencies, startDevServer, ensureViteTypes } from '../services/fileService';
 import { getWorkspaceConfig } from '../services/gitService';
 import { executeFileAction, runWithConcurrency } from '../services/executor';
 import { globalFileQueue } from '../services/fileQueue';
@@ -134,6 +134,17 @@ router.post('/', validateChat, async (req, res) => {
 
         // persistence: Initialize workspace and save full messages history
         const { dir: currentWorkspaceDir, isNew: isSessionNew } = ensureWorkspace(sessionId);
+
+        // Ensure type definitions for CSS/assets are present (prevents LLM 'as any' hacks)
+        ensureViteTypes(sessionId);
+
+        // Install npm dependencies if missing (required for tsc/eslint verification)
+        const nodeModulesPath = path.join(currentWorkspaceDir, 'node_modules');
+        if (!fs.existsSync(nodeModulesPath)) {
+            emit({ type: 'phase', phase: 'installing' });
+            await installDependencies(sessionId);
+        }
+
         try {
             const historyPath = path.join(currentWorkspaceDir, 'chat_history.json');
             fs.writeFileSync(historyPath, JSON.stringify(messages, null, 2));
@@ -620,7 +631,7 @@ router.post('/', validateChat, async (req, res) => {
                 geminiContents,
                 sessionId,
                 relPath,
-                `VERIFICATION FAILED for the following reasons:\n\n${verificationReport}${crossFileContext}\n\nREPAIR INSTRUCTIONS for ${relPath}:\n1. Analyze the errors specifically for this file.\n2. Fix any broken imports, missing exports, or type mismatches.\n3. You MUST use the EXACT export names from the imported modules shown above.\n4. If you imported a file that doesn't exist, either create it (in a previous task) or remove the import.\n5. Output ONLY the fixed RAW SOURCE CODE for ${relPath}.`,
+                `VERIFICATION FAILED for the following reasons:\n\n${verificationReport}${crossFileContext}\n\nREPAIR INSTRUCTIONS for ${relPath}:\n1. Analyze the errors specifically for this file.\n2. Fix any broken imports, missing exports, or type mismatches.\n3. **CRITICAL: NEVER use 'as any' on an import statement.** (e.g. \`import x from 'y' as any\` is INVALID). Remove it if you see it.\n4. You MUST use the EXACT export names from the imported modules shown above.\n5. If you imported a file that doesn't exist, either create it (in a previous task) or remove the import.\n6. Output ONLY the fixed RAW SOURCE CODE for ${relPath}.`,
                 listFiles(sessionId),
                 existingContent
             );
@@ -748,6 +759,12 @@ router.post('/', validateChat, async (req, res) => {
             }
 
             verifyRetries++;
+        }
+
+        // ── Step 4.5: Start Dev Server ────────────────────────────────────
+        const devPort = startDevServer(sessionId);
+        if (devPort) {
+            emit({ type: 'preview', url: `http://localhost:${devPort}` });
         }
 
         // ── Step 5: Finalize History persistence ──
