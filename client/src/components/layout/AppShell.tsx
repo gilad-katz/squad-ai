@@ -28,7 +28,7 @@ export const AppShell: React.FC = () => {
     return (
         <div className="h-screen flex flex-col bg-gray-50 overflow-hidden font-sans text-gray-900">
             <ProfileHeader phase={phase} onNewSession={handleNewSession} />
-            <ChatThread onRetry={(id) => sendMessage(null, undefined, id)} />
+            <ChatThread onRetry={(id) => sendMessage('', undefined, id)} />
             <MessageComposer onSend={(text, attachments) => sendMessage(text, attachments)} disabled={streamActive} />
             <GitSettingsPanel />
         </div>

@@ -248,6 +248,23 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
                 localStorage.removeItem(SESSION_STORAGE_KEY);
                 set({ sessionId: null, restoringSession: false });
             }
+
+            // Start the dev server for the restored session to enable the View App button
+            try {
+                const devRes = await fetch(`/api/chat/${sessionId}/dev-server`, { method: 'POST' });
+                if (devRes.ok) {
+                    const devData = await devRes.json();
+                    if (devData.url) {
+                        get().setPreviewUrl(devData.url);
+                    }
+                } else {
+                    get().setPreviewUrl(null);
+                }
+            } catch (err) {
+                console.error('Failed to start dev server on restore:', err);
+                get().setPreviewUrl(null);
+            }
+
         } catch (err) {
             console.error('Failed to restore session:', err);
             set({ restoringSession: false });

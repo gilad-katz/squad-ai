@@ -816,7 +816,7 @@ router.post('/', validateChat, async (req, res) => {
         }
 
         // ── Step 4.5: Start Dev Server ────────────────────────────────────
-        const devPort = startDevServer(sessionId);
+        const devPort = await startDevServer(sessionId);
         if (devPort) {
             emit({ type: 'preview', url: `http://localhost:${devPort}` });
         }
@@ -987,6 +987,23 @@ router.delete('/:sessionId', async (req, res) => {
     } catch (err: any) {
         console.error('Failed to delete workspace:', err);
         res.status(500).json({ error: 'Failed to delete workspace' });
+    }
+});
+
+// ─── Dev Server Management ───────────────────────────────────────────────────
+
+router.post('/:sessionId/dev-server', async (req, res) => {
+    const { sessionId } = req.params;
+    try {
+        const port = await startDevServer(sessionId);
+        if (port) {
+            res.json({ url: `http://localhost:${port}` });
+        } else {
+            res.status(400).json({ error: 'Failed to start dev server or node_modules missing' });
+        }
+    } catch (err: any) {
+        console.error('Failed to start dev server:', err);
+        res.status(500).json({ error: 'Server error while starting dev server' });
     }
 });
 

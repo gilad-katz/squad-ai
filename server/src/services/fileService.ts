@@ -3,6 +3,7 @@ import path from 'path';
 import { diffLines } from 'diff';
 import { exec, ChildProcess } from 'child_process';
 import util from 'util';
+import net from 'net';
 
 const execAsync = util.promisify(exec);
 
@@ -38,10 +39,31 @@ export async function installDependencies(sessionId: string): Promise<void> {
 }
 
 /**
+ * Helper to dynamically find a free port starting from a given port.
+ */
+async function getFreePort(startPort: number): Promise<number> {
+    return new Promise((resolve, reject) => {
+        const server = net.createServer();
+        server.unref();
+        server.on('error', (err: any) => {
+            if (err.code === 'EADDRINUSE') {
+                resolve(getFreePort(startPort + 1));
+            } else {
+                reject(err);
+            }
+        });
+        server.listen(startPort, () => {
+            const port = (server.address() as net.AddressInfo).port;
+            server.close(() => resolve(port));
+        });
+    });
+}
+
+/**
  * Start a Vite dev server for a workspace session.
  * Returns the port number the server is running on.
  */
-export function startDevServer(sessionId: string): number | null {
+export async function startDevServer(sessionId: string): Promise<number | null> {
     // Don't start a second server for the same session
     if (devServers.has(sessionId)) {
         return devServers.get(sessionId)!.port;
@@ -53,9 +75,12 @@ export function startDevServer(sessionId: string): number | null {
         return null;
     }
 
-    const port = nextPort++;
     try {
-        const child = exec(`npx vite --port ${port} --host`, {
+        const port = await getFreePort(nextPort);
+        // Advance nextPort so future searches start higher
+        nextPort = port + 1;
+
+        const child = exec(`npx vite --port ${port} --strictPort --host`, {
             cwd: workspaceDir,
         });
 

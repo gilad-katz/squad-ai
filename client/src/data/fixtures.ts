@@ -7,6 +7,9 @@ export const fixtures: Message[] = [
         content: 'Hi, can you help me build a React button component?',
         displayContent: 'Hi, can you help me build a React button component?',
         transparency: null,
+        fileActions: [],
+        serverFileActions: [],
+        gitActions: [],
         status: 'complete',
         timestamp: Date.now() - 60000 * 5
     },
@@ -24,6 +27,9 @@ export const fixtures: Message[] = [
             ],
             assumptions: '- The project uses Tailwind CSS for styling\n- The user wants standard HTML button props to be passed through'
         },
+        fileActions: [],
+        serverFileActions: [],
+        gitActions: [],
         status: 'complete',
         timestamp: Date.now() - 60000 * 4
     },
@@ -33,6 +39,9 @@ export const fixtures: Message[] = [
         content: 'Thank you. What if I want to make it an outline button?',
         displayContent: 'Thank you. What if I want to make it an outline button?',
         transparency: null,
+        fileActions: [],
+        serverFileActions: [],
+        gitActions: [],
         status: 'complete',
         timestamp: Date.now() - 60000 * 3
     },
@@ -49,24 +58,33 @@ export const fixtures: Message[] = [
             ],
             assumptions: 'None'
         },
+        fileActions: [],
+        serverFileActions: [],
+        gitActions: [],
         status: 'complete',
         timestamp: Date.now() - 60000 * 2
     },
     {
         id: 'm5',
         role: 'user',
-        content: 'Awesome, looks good!',
-        displayContent: 'Awesome, looks good!',
+        content: 'Can you also add a dark mode toggle to the right side of the nav?',
+        displayContent: 'Can you also add a dark mode toggle to the right side of the nav?',
         transparency: null,
+        fileActions: [],
+        serverFileActions: [],
+        gitActions: [],
         status: 'complete',
         timestamp: Date.now() - 60000 * 1
     },
     {
         id: 'm6',
         role: 'assistant',
-        content: 'You are very welcome! Let me know if you need help building any other components.',
-        displayContent: 'You are very welcome! Let me know if you need help building any other components.',
+        content: "Working on adding the dark mode toggle. I am integrating `next-themes` for robust theme management.",
+        displayContent: "Working on adding the dark mode toggle. I am integrating `next-themes` for robust theme management.",
         transparency: null,
+        fileActions: [],
+        serverFileActions: [],
+        gitActions: [],
         status: 'complete',
         timestamp: Date.now()
     }
