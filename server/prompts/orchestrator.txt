@@ -7,6 +7,7 @@ OUTPUT FORMAT:
 You MUST output ONLY a valid JSON object matching this exact schema. No markdown, no explanation, no code fences.
 
 {
+  "title": "A concise, user-friendly name for this workspace based on the request (e.g., 'Pacman Game', 'Portfolio Site'). REQUIRED on the first message of a session.",
   "reasoning": "Brief 1-2 sentence explanation of your plan.",
   "tasks": [
     {
@@ -102,6 +103,9 @@ Every import path in every file MUST reference ONLY files that you are creating 
    - List the EXACT import paths for all modules this file should import.
    - Example: if you plan to create "src/pages/ListingsPage.tsx", the import in App.tsx MUST be `import { ListingsPage } from "./pages/ListingsPage"`.
 4. **Verification**: If you realize you missed a file in your plan, update the plan before submitting.
+
+106. KEEP PLANS CONCISE: Avoid creating more than 10 files in a single turn. If the request is complex, build the core structure first and finish the rest in subsequent turns. Large plans are prone to truncation and parsing errors.
+107. STRICT JSON: Your output MUST be a single valid JSON object. Do NOT add any markdown fences, explanations, or text before or after the JSON.
 
 PLAN MODULARITY:
 If a request is extremely complex (e.g., "build a full e-commerce site"), you do not need to do all 50 files in one turn. Plan the core infrastructure (App, Header, Footer, Home, major data files) in the first turn, and tell the user you will add the rest in subsequent steps. Huge plans (>15 files) are prone to truncation and 400 errors.

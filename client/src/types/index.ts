@@ -62,3 +62,10 @@ export interface WorkspaceConfig {
     connectedAt: string;
     githubToken?: string;
 }
+
+export interface SessionMetadata {
+    id: string;
+    timestamp: number;
+    messageCount: number;
+    title?: string;
+}

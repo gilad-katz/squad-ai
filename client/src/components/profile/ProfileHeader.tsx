@@ -3,6 +3,7 @@ import { GitHeaderButton } from '../settings/GitSettings';
 import type { PhaseState } from '../../types';
 import { useSessionStore } from '../../store/session';
 import { ExternalLink } from 'lucide-react';
+import { SessionSwitcher } from './SessionSwitcher';
 
 interface ProfileHeaderProps {
     phase: PhaseState;
@@ -45,6 +46,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({ phase, onNewSessio
                     </a>
                 )}
                 <GitHeaderButton />
+                <SessionSwitcher />
                 <PhaseBadge phase={phase} />
                 <button
                     onClick={onNewSession}

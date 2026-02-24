@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { Message, PhaseState, FileAction, TransparencyData } from '../types';
 
+const SESSION_STORAGE_KEY = 'squad-ai-session-id';
+
 interface SessionStore {
     messages: Message[];
     streamActive: boolean;
@@ -8,6 +10,7 @@ interface SessionStore {
     contextWarning: boolean;
     sessionId: string | null;
     previewUrl: string | null;
+    restoringSession: boolean;
     setPreviewUrl: (url: string | null) => void;
     appendUserMessage: (content: string, attachments?: Message['attachments']) => void;
     appendAgentMessageStart: () => string;   // returns new message id
@@ -23,15 +26,18 @@ interface SessionStore {
     updateGitActionResult: (msgId: string, index: number, output?: string, error?: string) => void;
     setMessages: (messages: Message[]) => void;
     startNewSession: () => void;
+    restoreSession: () => Promise<void>;
+    switchSession: (id: string) => Promise<void>;
 }
 
-export const useSessionStore = create<SessionStore>((set) => ({
+export const useSessionStore = create<SessionStore>((set, get) => ({
     messages: [],
     streamActive: false,
     phase: 'ready',
     contextWarning: false,
-    sessionId: null,
+    sessionId: localStorage.getItem(SESSION_STORAGE_KEY),
     previewUrl: null,
+    restoringSession: false,
 
     setPreviewUrl: (url) => set({ previewUrl: url }),
 
@@ -103,7 +109,10 @@ export const useSessionStore = create<SessionStore>((set) => ({
 
     setContextWarning: (warning) => set({ contextWarning: warning }),
 
-    setSessionId: (id) => set({ sessionId: id }),
+    setSessionId: (id) => {
+        localStorage.setItem(SESSION_STORAGE_KEY, id);
+        set({ sessionId: id });
+    },
 
     addFileActions: (msgId, actions) => set(s => ({
         messages: s.messages.map(m =>
@@ -142,11 +151,87 @@ export const useSessionStore = create<SessionStore>((set) => ({
     })),
 
     setMessages: (messages) => set({ messages }),
-    startNewSession: () => set({
-        messages: [],
-        streamActive: false,
-        phase: 'ready',
-        contextWarning: false,
-        sessionId: null,
-    })
+
+    startNewSession: () => {
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+        set({
+            messages: [],
+            streamActive: false,
+            phase: 'ready',
+            contextWarning: false,
+            sessionId: null,
+            previewUrl: null,
+        });
+    },
+
+    restoreSession: async () => {
+        const { sessionId, messages, restoringSession } = get();
+        // Only restore if we have a persisted sessionId, haven't loaded messages,
+        // and aren't already restoring
+        if (!sessionId || messages.length > 0 || restoringSession) return;
+
+        set({ restoringSession: true });
+        try {
+            const res = await fetch(`/api/chat/${sessionId}/history`);
+
+            // Re-check: if session was cleared while we were fetching, bail out
+            if (get().sessionId !== sessionId) {
+                set({ restoringSession: false });
+                return;
+            }
+
+            if (!res.ok) {
+                // Session no longer exists on server — clear stale reference
+                localStorage.removeItem(SESSION_STORAGE_KEY);
+                set({ sessionId: null, restoringSession: false });
+                return;
+            }
+
+            const history: Message[] = await res.json();
+
+            // Re-check again after parsing: session might have been cleared
+            if (get().sessionId !== sessionId) {
+                set({ restoringSession: false });
+                return;
+            }
+
+            if (Array.isArray(history) && history.length > 0) {
+                // Ensure all restored messages have required fields with defaults
+                const normalised = history.map(m => ({
+                    ...m,
+                    displayContent: m.displayContent || m.content || '',
+                    transparency: m.transparency || null,
+                    fileActions: m.fileActions || [],
+                    serverFileActions: m.serverFileActions || [],
+                    gitActions: m.gitActions || [],
+                    status: (m.status || 'complete') as Message['status'],
+                }));
+                set({ messages: normalised, restoringSession: false });
+            } else {
+                // Empty history — clear stale reference
+                localStorage.removeItem(SESSION_STORAGE_KEY);
+                set({ sessionId: null, restoringSession: false });
+            }
+        } catch (err) {
+            console.error('Failed to restore session:', err);
+            set({ restoringSession: false });
+        }
+    },
+
+    switchSession: async (id: string) => {
+        // Clear current state first
+        set({
+            messages: [],
+            streamActive: false,
+            phase: 'ready',
+            contextWarning: false,
+            sessionId: id,
+            previewUrl: null,
+        });
+        localStorage.setItem(SESSION_STORAGE_KEY, id);
+
+        // Use the restore logic to pull historical data
+        const { restoreSession } = get();
+        await restoreSession();
+    },
 }));

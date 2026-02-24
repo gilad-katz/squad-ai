@@ -61,6 +61,7 @@ interface TaskGitAction {
 type ExecutionTask = TaskChat | TaskCreateFile | TaskEditFile | TaskDeleteFile | TaskGenerateImage | TaskGitAction;
 
 interface ExecutionPlan {
+    title?: string;
     reasoning: string;
     tasks: ExecutionTask[];
 }
@@ -87,6 +88,43 @@ function detectLanguage(filepath: string): string {
         jpg: 'image', jpeg: 'image', png: 'image', gif: 'image', webp: 'image',
     };
     return map[ext] || 'text';
+}
+
+function robustJsonParse(input: string): any {
+    const trimmed = input.trim();
+
+    // Attempt 1: Standard parse
+    try {
+        return JSON.parse(trimmed);
+    } catch (e) {
+        // Fall through
+    }
+
+    // Attempt 2: Strip markdown code fences
+    const fenceRegex = /```(?:json)?\s*([\s\S]*?)```/;
+    const fenceMatch = trimmed.match(fenceRegex);
+    if (fenceMatch) {
+        try {
+            return JSON.parse(fenceMatch[1].trim());
+        } catch (e) {
+            // Fall through
+        }
+    }
+
+    // Attempt 3: Extract first valid JSON object
+    // This is a bit naive but can catch text before/after JSON
+    const firstBrace = trimmed.indexOf('{');
+    const lastBrace = trimmed.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        const candidate = trimmed.substring(firstBrace, lastBrace + 1);
+        try {
+            return JSON.parse(candidate);
+        } catch (e) {
+            // Fall through
+        }
+    }
+
+    throw new Error('Could not parse execution plan as JSON');
 }
 
 // ─── Route ───────────────────────────────────────────────────────────────────
@@ -225,12 +263,27 @@ router.post('/', validateChat, async (req, res) => {
 
         let plan: ExecutionPlan;
         try {
-            plan = JSON.parse(planJson);
+            plan = robustJsonParse(planJson);
             if (!plan.tasks || !Array.isArray(plan.tasks)) {
                 throw new Error('Invalid plan: missing tasks array');
             }
+
+            // Persistence: Save session metadata (title)
+            if (plan.title) {
+                try {
+                    const metadataPath = path.join(currentWorkspaceDir, 'metadata.json');
+                    const metadata = {
+                        id: sessionId,
+                        title: plan.title,
+                        timestamp: Date.now()
+                    };
+                    fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
+                } catch (err) {
+                    console.error('Failed to save session metadata:', err);
+                }
+            }
         } catch (err) {
-            console.error('Failed to parse orchestrator plan:', planJson);
+            console.error('Failed to parse orchestrator plan. Raw response:', planJson);
             // Fallback: treat the entire response as a conversational reply
             emit({ type: 'delta', text: planJson });
             emit({ type: 'done', usage: null, sessionId });
@@ -805,6 +858,53 @@ router.post('/', validateChat, async (req, res) => {
         emit({ type: 'error', message: classifyError(err) });
     } finally {
         res.end();
+    }
+});
+
+// ─── Session Listing ─────────────────────────────────────────────────────────
+
+router.get('/sessions/list', async (_req, res) => {
+    try {
+        const WORKSPACE_ROOT = path.join(__dirname, '../../workspace');
+        if (!fs.existsSync(WORKSPACE_ROOT)) {
+            return res.json([]);
+        }
+
+        const entries = fs.readdirSync(WORKSPACE_ROOT, { withFileTypes: true });
+        const sessions = entries
+            .filter(e => e.isDirectory() && e.name.startsWith('session-'))
+            .map(e => {
+                const id = e.name;
+                const timestamp = parseInt(id.replace('session-', ''), 10) || 0;
+                const workspaceDir = path.join(WORKSPACE_ROOT, id);
+                const historyPath = path.join(workspaceDir, 'chat_history.json');
+                const metadataPath = path.join(workspaceDir, 'metadata.json');
+
+                let messageCount = 0;
+                try {
+                    if (fs.existsSync(historyPath)) {
+                        const history = JSON.parse(fs.readFileSync(historyPath, 'utf8'));
+                        messageCount = Array.isArray(history) ? history.length : 0;
+                    }
+                } catch { /* ignore parse errors */ }
+
+                let title = '';
+                try {
+                    if (fs.existsSync(metadataPath)) {
+                        const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+                        title = metadata.title || '';
+                    }
+                } catch { /* ignore parse errors */ }
+
+                return { id, timestamp, messageCount, title };
+            })
+            .filter(s => s.messageCount > 0) // only sessions with history
+            .sort((a, b) => b.timestamp - a.timestamp); // newest first
+
+        res.json(sessions);
+    } catch (err: any) {
+        console.error('Failed to list sessions:', err);
+        res.status(500).json({ error: 'Failed to list sessions' });
     }
 });
 

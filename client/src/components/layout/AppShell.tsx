@@ -11,21 +11,18 @@ export const AppShell: React.FC = () => {
     const phase = useSessionStore(state => state.phase);
     const streamActive = useSessionStore(state => state.streamActive);
     const startNewSession = useSessionStore(state => state.startNewSession);
-    const messages = useSessionStore(state => state.messages);
+    const restoreSession = useSessionStore(state => state.restoreSession);
     const { sendMessage } = useChat();
     const fetchConfig = useWorkspaceStore(state => state.fetchConfig);
 
-    // Fetch persisted workspace git config on mount
-    useEffect(() => { fetchConfig(); }, [fetchConfig]);
+    // Fetch persisted workspace git config and restore session on mount
+    useEffect(() => {
+        fetchConfig();
+        restoreSession();
+    }, [fetchConfig, restoreSession]);
 
     const handleNewSession = () => {
-        if (messages.length > 0) {
-            if (window.confirm('Start a new session? This will clear the current conversation.')) {
-                startNewSession();
-            }
-        } else {
-            startNewSession();
-        }
+        startNewSession();
     };
 
     return (
