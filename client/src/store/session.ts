@@ -9,9 +9,12 @@ interface SessionStore {
     phase: PhaseState;
     contextWarning: boolean;
     sessionId: string | null;
+    sessionTitle: string | null;
     previewUrl: string | null;
     restoringSession: boolean;
     setPreviewUrl: (url: string | null) => void;
+    setSessionTitle: (title: string | null) => void;
+    updateSessionTitle: (title: string) => Promise<void>;
     appendUserMessage: (content: string, attachments?: Message['attachments']) => void;
     appendAgentMessageStart: () => string;   // returns new message id
     appendAgentDelta: (id: string, delta: string) => void;
@@ -28,6 +31,7 @@ interface SessionStore {
     startNewSession: () => void;
     restoreSession: () => Promise<void>;
     switchSession: (id: string) => Promise<void>;
+    deleteSession: (id: string) => Promise<void>;
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
@@ -36,10 +40,28 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     phase: 'ready',
     contextWarning: false,
     sessionId: localStorage.getItem(SESSION_STORAGE_KEY),
+    sessionTitle: null,
     previewUrl: null,
     restoringSession: false,
 
     setPreviewUrl: (url) => set({ previewUrl: url }),
+    setSessionTitle: (title) => set({ sessionTitle: title }),
+
+    updateSessionTitle: async (title) => {
+        const { sessionId } = get();
+        if (!sessionId) return;
+
+        set({ sessionTitle: title });
+        try {
+            await fetch(`/api/chat/${sessionId}/metadata`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title })
+            });
+        } catch (err) {
+            console.error('Failed to update session title:', err);
+        }
+    },
 
     appendUserMessage: (content, attachments) => set(s => ({
         messages: [...s.messages, {
@@ -160,6 +182,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             phase: 'ready',
             contextWarning: false,
             sessionId: null,
+            sessionTitle: null,
             previewUrl: null,
         });
     },
@@ -195,6 +218,19 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
                 return;
             }
 
+            // Also fetch metadata for title
+            try {
+                const metaRes = await fetch(`/api/chat/${sessionId}/metadata`);
+                if (metaRes.ok) {
+                    const metadata = await metaRes.json();
+                    if (metadata.title) {
+                        set({ sessionTitle: metadata.title });
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to fetch metadata during restore:', err);
+            }
+
             if (Array.isArray(history) && history.length > 0) {
                 // Ensure all restored messages have required fields with defaults
                 const normalised = history.map(m => ({
@@ -226,6 +262,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             phase: 'ready',
             contextWarning: false,
             sessionId: id,
+            sessionTitle: null,
             previewUrl: null,
         });
         localStorage.setItem(SESSION_STORAGE_KEY, id);
@@ -233,5 +270,22 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         // Use the restore logic to pull historical data
         const { restoreSession } = get();
         await restoreSession();
+    },
+
+    deleteSession: async (id: string) => {
+        const { sessionId, startNewSession } = get();
+
+        try {
+            const res = await fetch(`/api/chat/${id}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error('Delete failed');
+
+            // If we deleted the active session, reset everything
+            if (id === sessionId) {
+                startNewSession();
+            }
+        } catch (err) {
+            console.error('Failed to delete session:', err);
+            throw err;
+        }
     },
 }));

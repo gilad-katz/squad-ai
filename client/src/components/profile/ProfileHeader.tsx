@@ -3,6 +3,7 @@ import { GitHeaderButton } from '../settings/GitSettings';
 import type { PhaseState } from '../../types';
 import { useSessionStore } from '../../store/session';
 import { ExternalLink } from 'lucide-react';
+import { EditableTitle } from './EditableTitle';
 import { SessionSwitcher } from './SessionSwitcher';
 
 interface ProfileHeaderProps {
@@ -20,7 +21,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({ phase, onNewSessio
                     FE
                 </div>
                 <div>
-                    <h1 className="font-bold text-gray-900 leading-tight">FE-SENIOR-01</h1>
+                    <EditableTitle />
                     <div className="flex items-center gap-2 text-sm text-gray-500">
                         <span>Senior Frontend Developer</span>
                         <span className="text-gray-300" aria-hidden="true">•</span>

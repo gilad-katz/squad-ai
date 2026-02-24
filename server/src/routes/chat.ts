@@ -278,6 +278,7 @@ router.post('/', validateChat, async (req, res) => {
                         timestamp: Date.now()
                     };
                     fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
+                    emit({ type: 'metadata', data: { title: plan.title } });
                 } catch (err) {
                     console.error('Failed to save session metadata:', err);
                 }
@@ -925,6 +926,67 @@ router.get('/:sessionId/history', async (req, res) => {
     } catch (err: any) {
         console.error('Failed to retrieve history:', err);
         res.status(500).json({ error: 'Failed to retrieve chat history' });
+    }
+});
+
+// ─── Metadata Management ───────────────────────────────────────────────────
+
+router.get('/:sessionId/metadata', async (req, res) => {
+    const { sessionId } = req.params;
+    try {
+        const { dir: workspaceDir } = ensureWorkspace(sessionId);
+        const metadataPath = path.join(workspaceDir, 'metadata.json');
+
+        if (!fs.existsSync(metadataPath)) {
+            return res.json({ id: sessionId, title: '', timestamp: Date.now() });
+        }
+
+        const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+        res.json(metadata);
+    } catch (err: any) {
+        console.error('Failed to retrieve metadata:', err);
+        res.status(500).json({ error: 'Failed to retrieve metadata' });
+    }
+});
+
+router.patch('/:sessionId/metadata', async (req, res) => {
+    const { sessionId } = req.params;
+    const { title } = req.body;
+
+    try {
+        const { dir: workspaceDir } = ensureWorkspace(sessionId);
+        const metadataPath = path.join(workspaceDir, 'metadata.json');
+
+        let metadata: any = { id: sessionId, timestamp: Date.now() };
+        if (fs.existsSync(metadataPath)) {
+            metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+        }
+
+        if (title !== undefined) metadata.title = title;
+
+        fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
+        res.json(metadata);
+    } catch (err: any) {
+        console.error('Failed to update metadata:', err);
+        res.status(500).json({ error: 'Failed to update metadata' });
+    }
+});
+
+router.delete('/:sessionId', async (req, res) => {
+    const { sessionId } = req.params;
+    try {
+        const { dir: workspaceDir } = ensureWorkspace(sessionId);
+
+        if (fs.existsSync(workspaceDir)) {
+            // recursive: true to delete everything inside
+            // force: true to not throw if it doesn't exist (though we check existsSync)
+            fs.rmSync(workspaceDir, { recursive: true, force: true });
+        }
+
+        res.json({ success: true });
+    } catch (err: any) {
+        console.error('Failed to delete workspace:', err);
+        res.status(500).json({ error: 'Failed to delete workspace' });
     }
 });
 

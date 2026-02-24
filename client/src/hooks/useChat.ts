@@ -136,6 +136,12 @@ export function useChat() {
             // onPreview — dev server URL
             (url) => {
                 useSessionStore.getState().setPreviewUrl(url);
+            },
+            // onMetadata
+            (data) => {
+                if (data.title) {
+                    useSessionStore.getState().setSessionTitle(data.title);
+                }
             }
         );
     };

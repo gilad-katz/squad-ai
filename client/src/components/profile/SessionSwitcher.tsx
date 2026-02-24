@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { History, ChevronDown, MessageSquare, Clock, Check } from 'lucide-react';
+import { History, ChevronDown, MessageSquare, Clock, Check, Trash2 } from 'lucide-react';
 import { useSessionStore } from '../../store/session';
 import type { SessionMetadata } from '../../types';
 
@@ -7,8 +7,10 @@ export const SessionSwitcher: React.FC = () => {
     const [isOpen, setIsOpen] = useState(false);
     const [sessions, setSessions] = useState<SessionMetadata[]>([]);
     const [loading, setLoading] = useState(false);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
     const currentSessionId = useSessionStore(state => state.sessionId);
     const switchSession = useSessionStore(state => state.switchSession);
+    const deleteSession = useSessionStore(state => state.deleteSession);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     const fetchSessions = async () => {
@@ -43,12 +45,29 @@ export const SessionSwitcher: React.FC = () => {
     }, []);
 
     const handleSwitch = async (id: string) => {
+        if (deletingId) return; // Don't switch if we are clicking delete
         if (id === currentSessionId) {
             setIsOpen(false);
             return;
         }
         await switchSession(id);
         setIsOpen(false);
+    };
+
+    const handleDelete = async (e: React.MouseEvent, id: string) => {
+        e.stopPropagation(); // Don't trigger switch
+        if (deletingId === id) {
+            try {
+                await deleteSession(id);
+                // Refresh list
+                await fetchSessions();
+                setDeletingId(null);
+            } catch (err) {
+                console.error('Failed to delete:', err);
+            }
+        } else {
+            setDeletingId(id);
+        }
     };
 
     const formatDate = (timestamp: number) => {
@@ -105,9 +124,23 @@ export const SessionSwitcher: React.FC = () => {
                                                 <Check className="w-3 h-3 text-blue-600" />
                                             )}
                                         </div>
-                                        <div className="flex items-center gap-1 text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
-                                            <MessageSquare className="w-2.5 h-2.5" />
-                                            {session.messageCount}
+                                        <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-1 text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                                                <MessageSquare className="w-2.5 h-2.5" />
+                                                {session.messageCount}
+                                            </div>
+                                            <button
+                                                onClick={(e) => handleDelete(e, session.id)}
+                                                className={`p-1 rounded hover:bg-red-50 group/del transition-colors ${deletingId === session.id ? 'text-red-600 bg-red-50' : 'text-gray-300 hover:text-red-500'
+                                                    }`}
+                                                title={deletingId === session.id ? "Confirm delete" : "Delete session"}
+                                            >
+                                                {deletingId === session.id ? (
+                                                    <span className="text-[10px] font-bold px-1">Confirm</span>
+                                                ) : (
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                )}
+                                            </button>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-1 text-[11px] text-gray-500">
