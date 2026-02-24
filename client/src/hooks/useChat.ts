@@ -142,6 +142,10 @@ export function useChat() {
                 if (data.title) {
                     useSessionStore.getState().setSessionTitle(data.title);
                 }
+            },
+            // onSummary
+            (text) => {
+                useSessionStore.getState().setSummary(agentMsgId, text);
             }
         );
     };

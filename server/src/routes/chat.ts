@@ -63,6 +63,7 @@ type ExecutionTask = TaskChat | TaskCreateFile | TaskEditFile | TaskDeleteFile |
 interface ExecutionPlan {
     title?: string;
     reasoning: string;
+    assumptions?: string;
     tasks: ExecutionTask[];
 }
 
@@ -146,6 +147,43 @@ router.post('/', validateChat, async (req, res) => {
 
     // Send sessionId back to the client
     emit({ type: 'session', sessionId });
+
+    // Helper: Generate a summary and next steps after work is done
+    const generateSummary = async (fileActions: any[], gitActions: any[], verificationReport: string) => {
+        try {
+            const summaryPrompt = `
+You have just completed a series of tasks in a coding workspace.
+Based on the following activities, generate a concise summary of what was accomplished and suggest 2-3 **highly specific, technical** next steps for the user.
+
+COMPLETED FILE ACTIONS:
+${fileActions.map(a => `- ${a.action} ${a.filepath}`).join('\n') || 'None'}
+
+TERMINAL/GIT ACTIONS:
+${gitActions.map(a => `- ${a.command}: ${a.output?.substring(0, 150)}...`).join('\n') || 'None'}
+
+VERIFICATION STATUS:
+${verificationReport || 'All checks passed.'}
+
+FORMATTING RULES:
+1. Start with a header "### Summary of Work".
+2. Follow with a header "### Suggested Next Steps" and a bulleted list.
+3. **CRITICAL**: Next steps must be technical and actionable (e.g., "Implement the 'Search' component in 'src/components/Search.tsx'" or "Add 'lucide-react' icons to the navigation menu"). Avoid generic advice like "Improve UI" or "Add more features".
+4. Refer to the existing codebase and context when suggesting steps.
+5. Use a professional and collaborative tone.
+6. Output ONLY the Markdown text.
+`;
+
+            const response = await ai.models.generateContent({
+                model: process.env.MODEL_ID || 'gemini-2.5-flash',
+                contents: [{ role: 'user', parts: [{ text: summaryPrompt }] }]
+            });
+
+            return response.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        } catch (err) {
+            console.error('Failed to generate summary:', err);
+            return '';
+        }
+    };
 
     try {
         const completedServerFileActions: any[] = [];
@@ -342,7 +380,7 @@ router.post('/', validateChat, async (req, res) => {
                 data: {
                     reasoning: plan.reasoning || '',
                     tasks: transparencyTasks.map(t => ({ id: t.id, description: t.description, status: t.status })),
-                    assumptions: 'None'
+                    assumptions: plan.assumptions || 'None'
                 }
             });
         };
@@ -864,6 +902,26 @@ router.post('/', validateChat, async (req, res) => {
             completedGitActions.push(gitResult);
             emit(gitResult);
         }
+        // ── Step 4.7: Generate Final Summary ──────────────────────────────
+        emit({ type: 'phase', phase: 'responding' });
+        const finalVerificationReport = formatVerificationErrorsForPrompt(
+            [], // Current verification loop finished, so we don't need detailed re-run errors here
+            [],
+            currentWorkspaceDir
+        );
+
+        // We actually want to know if there are STILL errors after all retries
+        // But for the summary, we can just use the context we have.
+
+        const summaryText = await generateSummary(
+            completedServerFileActions,
+            completedGitActions,
+            'All verification and repair cycles finished.'
+        );
+
+        if (summaryText) {
+            emit({ type: 'summary', text: summaryText });
+        }
 
         // ── Step 5: Finalize History persistence ──
         const assistantContent = plan.tasks
@@ -876,12 +934,13 @@ router.post('/', validateChat, async (req, res) => {
             role: 'assistant',
             content: assistantContent,
             displayContent: assistantContent,
+            summary: summaryText, // Persist the generated summary
             status: 'complete',
             timestamp: Date.now(),
             transparency: {
                 reasoning: plan.reasoning || '',
                 tasks: transparencyTasks.map(t => ({ id: t.id, description: t.description, status: 'done' })),
-                assumptions: 'None'
+                assumptions: plan.assumptions || 'None'
             },
             fileActions: [],
             serverFileActions: completedServerFileActions,

@@ -87,28 +87,28 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({ onSend = () =>
     };
 
     return (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-10 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+        <div className="fixed bottom-0 left-0 right-0 glass-effect p-4 z-50 shadow-[0_-8px_30px_rgb(0,0,0,0.04)] border-t border-gray-200/50">
             <div className="max-w-4xl mx-auto flex flex-col gap-2">
                 {attachments.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-2">
+                    <div className="flex flex-wrap gap-3 mb-3 animate-fade-in">
                         {attachments.map(att => (
                             <div key={att.id} className="relative group">
                                 <img
                                     src={att.url}
                                     alt={att.name}
-                                    className="w-20 h-20 object-cover rounded-lg border border-gray-200"
+                                    className="w-24 h-24 object-cover rounded-2xl border-2 border-white shadow-lg group-hover:scale-[1.05] transition-transform duration-300"
                                 />
                                 <button
                                     onClick={() => removeAttachment(att.id)}
-                                    className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                                    className="absolute -top-2 -right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-md hover:bg-red-600 active:scale-90"
                                 >
-                                    <X className="w-3 h-3" />
+                                    <X className="w-3.5 h-3.5" />
                                 </button>
                             </div>
                         ))}
                     </div>
                 )}
-                <div className="relative flex items-end gap-2 bg-gray-50 rounded-xl border border-gray-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 overflow-hidden transition-all pr-2">
+                <div className="relative flex items-end gap-2 bg-white/50 backdrop-blur-sm rounded-2xl border border-gray-200/80 focus-within:ring-2 focus-within:ring-blue-500/30 focus-within:border-blue-500 group transition-all pr-2.5 pl-1 shadow-inner">
                     <input
                         type="file"
                         ref={fileInputRef}
@@ -120,7 +120,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({ onSend = () =>
                     <button
                         onClick={() => fileInputRef.current?.click()}
                         disabled={disabled}
-                        className="p-3 text-gray-400 hover:text-blue-600 disabled:opacity-50 transition-colors"
+                        className="p-3.5 text-gray-400 hover:text-blue-600 disabled:opacity-30 transition-all hover:scale-110 active:scale-90"
                         title="Upload screenshots"
                     >
                         <ImageIcon className="w-5 h-5" />
@@ -133,14 +133,14 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({ onSend = () =>
                         disabled={disabled}
                         autoFocus
                         placeholder="Ask FE-SENIOR-01 a question..."
-                        className="w-full max-h-[160px] py-3 bg-transparent outline-none resize-none leading-relaxed text-gray-900 placeholder:text-gray-400 disabled:opacity-50"
-                        style={{ height: '52px' }}
+                        className="w-full max-h-[200px] py-4 bg-transparent outline-none resize-none leading-relaxed text-gray-900 placeholder:text-gray-400 disabled:opacity-50 text-base"
+                        style={{ height: '56px' }}
                     />
-                    <div className="py-2.5">
+                    <div className="py-3">
                         <button
                             onClick={handleSend}
                             disabled={(!input.trim() && attachments.length === 0) || disabled}
-                            className="p-2 rounded-lg bg-blue-600 text-white disabled:bg-gray-200 disabled:text-gray-400 hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                            className="p-2.5 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white disabled:from-gray-200 disabled:to-gray-200 disabled:text-gray-400 hover:shadow-lg hover:shadow-blue-500/20 transition-all hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                             aria-label="Send message"
                         >
                             <SendHorizonal className="w-5 h-5" />
@@ -148,7 +148,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({ onSend = () =>
                     </div>
                 </div>
                 <div className="text-center mt-2 pb-1">
-                    <p className="text-xs text-gray-400 font-medium tracking-wide">Enter to send • Shift + Enter for new line</p>
+                    <p className="text-[11px] text-gray-400 font-bold tracking-widest uppercase opacity-70">Enter to send • Shift + Enter for new line</p>
                 </div>
             </div>
         </div>

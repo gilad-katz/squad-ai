@@ -26,6 +26,7 @@ interface SessionStore {
     addFileActions: (msgId: string, actions: FileAction[]) => void;
     addServerFileAction: (msgId: string, action: FileAction) => void;
     setTransparency: (msgId: string, data: TransparencyData) => void;
+    setSummary: (msgId: string, summary: string) => void;
     updateGitActionResult: (msgId: string, index: number, output?: string, error?: string, action?: 'clone' | 'execute', command?: string) => void;
     setMessages: (messages: Message[]) => void;
     startNewSession: () => void;
@@ -158,6 +159,12 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     setTransparency: (msgId, data) => set(s => ({
         messages: s.messages.map(m =>
             m.id === msgId ? { ...m, transparency: data } : m
+        )
+    })),
+
+    setSummary: (msgId, summary) => set(s => ({
+        messages: s.messages.map(m =>
+            m.id === msgId ? { ...m, summary } : m
         )
     })),
 

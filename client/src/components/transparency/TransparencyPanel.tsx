@@ -45,7 +45,7 @@ export const TransparencyPanel: React.FC<TransparencyPanelProps> = ({ data, isSt
                     maxHeight: isOpen ? '2000px' : '0' // using inline style over class for smoother generic height
                 }}
             >
-                <div className="px-5 py-4 border-t border-gray-100 bg-[#F4F4F5] rounded-b-sm">
+                <div className="px-6 py-5 border-t border-gray-100 bg-white/40 dark:bg-slate-900/40 backdrop-blur-sm rounded-b-xl stagger-load">
                     <ReasoningSection reasoning={data.reasoning} />
                     <TaskList tasks={data.tasks} />
                     <AssumptionsList assumptions={data.assumptions} />

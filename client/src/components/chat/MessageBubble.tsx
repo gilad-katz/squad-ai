@@ -49,17 +49,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
 
     // Agent message
     return (
-        <div className="flex justify-start w-full mb-6">
-            <div className="flex flex-col max-w-[85%] min-w-[200px] bg-white border border-gray-200 rounded-2xl rounded-tl-sm shadow-sm overflow-hidden text-left">
-                {message.transparency && (
-                    <TransparencyPanel
-                        data={message.transparency}
-                        isStreaming={message.status === 'streaming'}
-                    />
-                )}
-
+        <div className="flex justify-start w-full mb-6 animate-slide-up">
+            <div className="flex flex-col max-w-[85%] min-w-[200px] bg-white border border-gray-200 rounded-2xl rounded-tl-sm shadow-sm overflow-hidden text-left hover:shadow-md transition-shadow duration-300">
                 {message.displayContent && (
-                    <div className={`p-5 ${message.transparency ? 'border-t border-gray-100' : ''}`}>
+                    <div className="p-5">
                         <div className="prose prose-blue max-w-none">
                             {message.status === 'streaming' ? (
                                 <div className="font-sans text-base text-gray-800 m-0 min-h-[1.5rem] whitespace-pre-wrap">
@@ -73,7 +66,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
                 )}
 
                 {hasFileActions && (
-                    <div className={`px-4 py-3 space-y-2 ${(message.transparency || message.displayContent) ? 'border-t border-gray-100' : ''}`}>
+                    <div className={`px-4 py-3 space-y-2 border-t border-gray-50 bg-gray-50/30`}>
                         {mergedFileActions.map((fa) => (
                             <FileActionCard key={fa.id} action={fa} />
                         ))}
@@ -81,8 +74,21 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
                 )}
 
                 {hasGitActions && (
-                    <div className={`px-4 py-3 space-y-2 ${(message.transparency || message.displayContent || hasFileActions) ? 'border-t border-gray-100' : ''}`}>
+                    <div className={`px-4 py-3 space-y-2 border-t border-gray-50 bg-gray-50/30`}>
                         <GitTerminalView actions={message.gitActions} isStreaming={message.status === 'streaming'} />
+                    </div>
+                )}
+
+                {message.transparency && (
+                    <TransparencyPanel
+                        data={message.transparency}
+                        isStreaming={message.status === 'streaming'}
+                    />
+                )}
+
+                {message.summary && (
+                    <div className="px-6 py-5 bg-gradient-to-br from-blue-50/50 to-indigo-50/50 border-t border-blue-100/50 animate-fade-in">
+                        <MarkdownRenderer content={message.summary} />
                     </div>
                 )}
 

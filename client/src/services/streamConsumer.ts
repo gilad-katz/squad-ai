@@ -12,7 +12,8 @@ export async function consumeStream(
     onPhase?: (phase: PhaseState) => void,
     onTransparency?: (data: TransparencyData) => void,
     onPreview?: (url: string) => void,
-    onMetadata?: (data: { title?: string }) => void
+    onMetadata?: (data: { title?: string }) => void,
+    onSummary?: (text: string) => void
 ): Promise<void> {
     try {
         const response = await fetch('/api/chat', {
@@ -54,6 +55,7 @@ export async function consumeStream(
                     if (evt.type === 'transparency' && onTransparency) onTransparency(evt.data);
                     if (evt.type === 'preview' && onPreview) onPreview(evt.url);
                     if (evt.type === 'metadata' && onMetadata) onMetadata(evt.data);
+                    if (evt.type === 'summary' && onSummary) onSummary(evt.text);
                 } catch (err) {
                     console.warn('Failed to parse SSE line:', line);
                 }

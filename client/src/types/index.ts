@@ -50,6 +50,7 @@ export interface Message {
     fileActions: FileAction[];
     serverFileActions: FileAction[];
     gitActions: GitAction[];
+    summary?: string;
     status: 'complete' | 'streaming' | 'error';
     timestamp: number;
 }
