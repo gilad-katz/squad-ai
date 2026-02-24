@@ -26,7 +26,7 @@ interface SessionStore {
     addFileActions: (msgId: string, actions: FileAction[]) => void;
     addServerFileAction: (msgId: string, action: FileAction) => void;
     setTransparency: (msgId: string, data: TransparencyData) => void;
-    updateGitActionResult: (msgId: string, index: number, output?: string, error?: string) => void;
+    updateGitActionResult: (msgId: string, index: number, output?: string, error?: string, action?: 'clone' | 'execute', command?: string) => void;
     setMessages: (messages: Message[]) => void;
     startNewSession: () => void;
     restoreSession: () => Promise<void>;
@@ -161,12 +161,22 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         )
     })),
 
-    updateGitActionResult: (msgId, index, output, error) => set(s => ({
+    updateGitActionResult: (msgId, index, output, error, action, command) => set(s => ({
         messages: s.messages.map(m => {
             if (m.id !== msgId) return m;
             const newGitActions = [...m.gitActions];
             if (newGitActions[index]) {
-                newGitActions[index] = { ...newGitActions[index], output, error };
+                const currentAction = newGitActions[index];
+                newGitActions[index] = {
+                    ...currentAction,
+                    output,
+                    error,
+                    ...(action ? { action } : {}),
+                    ...(command ? { command } : {})
+                };
+            } else {
+                // If it doesn't exist yet, but we're starting to stream it, initialize it
+                newGitActions[index] = { id: `git-tmp-${Date.now()}-${index}`, action: action || 'execute', command: command || '', output, error };
             }
             return { ...m, gitActions: newGitActions };
         })
@@ -256,6 +266,29 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
                     const devData = await devRes.json();
                     if (devData.url) {
                         get().setPreviewUrl(devData.url);
+
+                        // If logs exist, push a local ephemeral message to the chat
+                        if (devData.logs && devData.command) {
+                            set(s => ({
+                                messages: [...s.messages, {
+                                    id: `dev-${Date.now()}`,
+                                    role: 'assistant',
+                                    content: 'Dev server started successfully.',
+                                    displayContent: 'Dev server started successfully.',
+                                    transparency: null,
+                                    fileActions: [],
+                                    serverFileActions: [],
+                                    gitActions: [{
+                                        id: `dev-git-${Date.now()}`,
+                                        action: 'execute',
+                                        command: devData.command,
+                                        output: devData.logs
+                                    }],
+                                    status: 'complete',
+                                    timestamp: Date.now()
+                                }]
+                            }));
+                        }
                     }
                 } else {
                     get().setPreviewUrl(null);

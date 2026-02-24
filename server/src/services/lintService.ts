@@ -24,13 +24,15 @@ export interface LintResult {
 /**
  * Runs ESLint on the specified workspace and returns a structured report.
  */
-export async function lintWorkspace(sessionId: string): Promise<LintResult[]> {
+export async function lintWorkspace(sessionId: string, onProgress?: (data: string) => void): Promise<LintResult[]> {
     const workspaceDir = path.join(WORKSPACE_ROOT, sessionId);
     if (!fs.existsSync(workspaceDir)) {
         return [];
     }
 
     try {
+        if (onProgress) onProgress('$ npx eslint src\nRunning ESLint analysis...\n');
+
         // Run ESLint via npx to avoid needing a local install in every workspace immediately
         // We use the JSON format for easy parsing
         // We target the 'src' directory as per our template structure
@@ -39,14 +41,28 @@ export async function lintWorkspace(sessionId: string): Promise<LintResult[]> {
             { cwd: workspaceDir }
         );
 
+        if (onProgress) onProgress('ESLint analysis complete.\n');
+
         // If it exits with 0 andhas output, it might be empty or clean
         return parseLintOutput(stdout || '[]');
     } catch (err: any) {
         // ESLint exits with non-zero if errors are found
         if (err.stdout) {
-            return parseLintOutput(err.stdout);
+            const results = parseLintOutput(err.stdout);
+            if (onProgress) {
+                const formatted = formatLintErrorsForPrompt(results, workspaceDir);
+                if (formatted && formatted !== 'No lint errors found.') {
+                    onProgress(`ESLint analysis completed with errors:\n\n${formatted}\n`);
+                } else {
+                    onProgress('ESLint analysis completed with errors.\n');
+                }
+            }
+            return results;
         }
-        console.error(`ESLint failed for session ${sessionId}:`, err.message);
+
+        const errMsg = err.message || 'Unknown error';
+        if (onProgress) onProgress(`ESLint analysis failed: ${errMsg}\n`);
+        console.error(`ESLint failed for session ${sessionId}:`, errMsg);
         return [];
     }
 }
@@ -75,48 +91,68 @@ function parseLintOutput(stdout: string): LintResult[] {
 /**
  * Runs TypeScript type checking on the specified workspace.
  */
-export async function typeCheckWorkspace(sessionId: string): Promise<string[]> {
+export async function typeCheckWorkspace(sessionId: string, onProgress?: (data: string) => void): Promise<string[]> {
     const workspaceDir = path.join(WORKSPACE_ROOT, sessionId);
     if (!fs.existsSync(workspaceDir)) {
         return [];
     }
 
-    try {
-        // Use the absolute path to the local project's tsc binary for reliability
-        const tscPath = path.join(__dirname, '../../node_modules/.bin/tsc');
-        // If local tsc doesn't exist, fallback to npx
-        const cmd = fs.existsSync(tscPath) ? tscPath : 'npx tsc';
+    // Use the absolute path to the local project's tsc binary for reliability
+    const tscPath = path.join(__dirname, '../../node_modules/.bin/tsc');
+    // If local tsc doesn't exist, fallback to npx
+    const baseCmd = fs.existsSync(tscPath) ? tscPath : 'npx tsc';
+    const cmd = `${baseCmd} --noEmit --pretty false`;
 
-        await execAsync(`${cmd} --noEmit --pretty false`, {
+    return new Promise((resolve) => {
+        if (onProgress) onProgress(`$ ${cmd}\n`);
+
+        const child = exec(cmd, {
             cwd: workspaceDir,
             maxBuffer: 1024 * 1024 // 1MB buffer for large error outputs
         });
-        return []; // No errors
-    } catch (err: any) {
+
         let output = '';
-        if (err.stdout) output += err.stdout;
-        if (err.stderr) output += '\n' + err.stderr;
 
-        if (output) {
-            // Robust regex to match both ": error TS" and "- error TS" formats
-            // Matches formats like:
-            // src/App.tsx(2,7): error TS2307: ...
-            // src/App.tsx:2:7 - error TS2307: ...
-            const lines = output.split('\n').filter(line =>
-                line.includes('error TS') ||
-                line.includes('cannot find module') ||
-                line.includes('no exported member') ||
-                line.includes('expected') ||  // Catch syntax errors like "; expected"
-                line.includes('Unexpected token') ||
-                /\(.\d+,.d+\): error/.test(line) // Robust check for file(line,col): error format
-            );
+        child.stdout?.on('data', (data: string) => {
+            output += data;
+            if (onProgress) onProgress(data);
+        });
 
-            if (lines.length > 0) return lines;
-        }
+        child.stderr?.on('data', (data: string) => {
+            output += data;
+            if (onProgress) onProgress(data);
+        });
 
-        // If we have an error but no recognized output, return the raw error message
-        return [err.message || 'Unknown TypeScript error'];
-    }
+        child.on('exit', (code) => {
+            if (code === 0) {
+                resolve([]); // No errors
+                return;
+            }
+
+            if (output) {
+                // Robust regex to match both ": error TS" and "- error TS" formats
+                const lines = output.split('\n').filter(line =>
+                    line.includes('error TS') ||
+                    line.includes('cannot find module') ||
+                    line.includes('no exported member') ||
+                    line.includes('expected') ||
+                    line.includes('Unexpected token') ||
+                    /\(.\d+,.d+\): error/.test(line)
+                );
+
+                if (lines.length > 0) {
+                    resolve(lines);
+                    return;
+                }
+            }
+
+            resolve(['Unknown TypeScript error']);
+        });
+
+        child.on('error', (err) => {
+            resolve([err.message || 'Unknown TypeScript spawn error']);
+        });
+    });
 }
 
 /**

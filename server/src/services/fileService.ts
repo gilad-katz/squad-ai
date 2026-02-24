@@ -11,31 +11,54 @@ const WORKSPACE_ROOT = path.join(__dirname, '../../workspace');
 const TEMPLATE_ROOT = path.join(__dirname, '../../templates');
 
 // Track running dev servers by sessionId
-const devServers = new Map<string, { process: ChildProcess; port: number }>();
+const devServers = new Map<string, { process: ChildProcess; port: number; logs: string; command: string }>();
 let nextPort = 5173;
 
 /**
  * Install npm dependencies in a workspace directory.
  * Only runs once per session (when node_modules doesn't exist).
  */
-export async function installDependencies(sessionId: string): Promise<void> {
+export async function installDependencies(sessionId: string, onProgress?: (data: string) => void): Promise<void> {
     const workspaceDir = path.join(WORKSPACE_ROOT, sessionId);
     const nodeModulesDir = path.join(workspaceDir, 'node_modules');
 
     // Skip if already installed
     if (fs.existsSync(nodeModulesDir)) return;
 
-    try {
+    return new Promise((resolve, reject) => {
         console.log(`[${sessionId}] Installing dependencies...`);
-        await execAsync('npm install --prefer-offline --no-audit --no-fund', {
+        const cmd = 'npm install --prefer-offline --no-audit --no-fund';
+        if (onProgress) onProgress(`$ ${cmd}\n`);
+
+        const child = exec(cmd, {
             cwd: workspaceDir,
             timeout: 120_000, // 2 minute timeout
         });
-        console.log(`[${sessionId}] Dependencies installed successfully.`);
-    } catch (err: any) {
-        console.error(`[${sessionId}] npm install failed:`, err.message);
-        // Don't throw — verification will just degrade gracefully
-    }
+
+        child.stdout?.on('data', (data: string) => {
+            if (onProgress) onProgress(data);
+        });
+
+        child.stderr?.on('data', (data: string) => {
+            if (onProgress) onProgress(data);
+        });
+
+        child.on('exit', (code) => {
+            if (code === 0) {
+                console.log(`[${sessionId}] Dependencies installed successfully.`);
+                resolve();
+            } else {
+                console.error(`[${sessionId}] npm install failed with code ${code}`);
+                // Don't reject — verification will just degrade gracefully
+                resolve();
+            }
+        });
+
+        child.on('error', (err) => {
+            console.error(`[${sessionId}] npm install spawn error:`, err.message);
+            resolve();
+        });
+    });
 }
 
 /**
@@ -61,12 +84,13 @@ async function getFreePort(startPort: number): Promise<number> {
 
 /**
  * Start a Vite dev server for a workspace session.
- * Returns the port number the server is running on.
+ * Returns the port number the server is running on along with the startup logs.
  */
-export async function startDevServer(sessionId: string): Promise<number | null> {
+export async function startDevServer(sessionId: string): Promise<{ port: number; logs: string; command: string } | null> {
     // Don't start a second server for the same session
     if (devServers.has(sessionId)) {
-        return devServers.get(sessionId)!.port;
+        const cached = devServers.get(sessionId)!;
+        return { port: cached.port, logs: cached.logs, command: cached.command };
     }
 
     const workspaceDir = path.join(WORKSPACE_ROOT, sessionId);
@@ -80,31 +104,55 @@ export async function startDevServer(sessionId: string): Promise<number | null> 
         // Advance nextPort so future searches start higher
         nextPort = port + 1;
 
-        const child = exec(`npx vite --port ${port} --strictPort --host`, {
+        const cmd = `npx vite --port ${port} --strictPort --host`;
+        const child = exec(cmd, {
             cwd: workspaceDir,
         });
 
-        child.stdout?.on('data', (data: string) => {
-            if (data.includes('ready in') || data.includes('Local:')) {
-                console.log(`[${sessionId}] Dev server ready on port ${port}`);
-            }
-        });
+        return new Promise((resolve) => {
+            let startupLogs = '';
+            let resolved = false;
 
-        child.stderr?.on('data', (data: string) => {
-            // Vite logs some info to stderr, only log if it looks like a real error
-            if (data.includes('Error') || data.includes('error')) {
-                console.error(`[${sessionId}] Dev server error:`, data.trim());
-            }
-        });
+            const handleData = (data: string) => {
+                startupLogs += data;
+                if (!resolved && (data.includes('ready in') || data.includes('Local:'))) {
+                    console.log(`[${sessionId}] Dev server ready on port ${port}`);
+                    devServers.set(sessionId, { process: child, port, logs: startupLogs.trim(), command: cmd });
+                    resolved = true;
+                    resolve({ port, logs: startupLogs.trim(), command: cmd });
+                }
+            };
 
-        child.on('exit', (code) => {
-            console.log(`[${sessionId}] Dev server exited with code ${code}`);
-            devServers.delete(sessionId);
-        });
+            child.stdout?.on('data', handleData);
+            child.stderr?.on('data', (data: string) => {
+                startupLogs += data;
+                // Vite logs some info to stderr, only log if it looks like a real error
+                if (data.includes('Error') || data.includes('error')) {
+                    console.error(`[${sessionId}] Dev server error:`, data.trim());
+                }
+            });
 
-        devServers.set(sessionId, { process: child, port });
-        console.log(`[${sessionId}] Dev server starting on port ${port}`);
-        return port;
+            child.on('exit', (code) => {
+                console.log(`[${sessionId}] Dev server exited with code ${code}`);
+                devServers.delete(sessionId);
+                if (!resolved) {
+                    resolved = true;
+                    resolve(null);
+                }
+            });
+
+            console.log(`[${sessionId}] Dev server starting on port ${port}`);
+
+            // Timeout after 15 seconds if it never says "ready in"
+            setTimeout(() => {
+                if (!resolved) {
+                    console.warn(`[${sessionId}] Dev server ready timeout. Proceeding anyway.`);
+                    devServers.set(sessionId, { process: child, port, logs: startupLogs.trim(), command: cmd });
+                    resolved = true;
+                    resolve({ port, logs: startupLogs.trim(), command: cmd });
+                }
+            }, 15000);
+        });
     } catch (err: any) {
         console.error(`[${sessionId}] Failed to start dev server:`, err.message);
         return null;

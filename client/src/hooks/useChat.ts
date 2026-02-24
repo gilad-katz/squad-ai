@@ -114,8 +114,8 @@ export function useChat() {
                 useSessionStore.getState().setAgentError(agentMsgId, msg);
             },
             // onGitResult
-            (index, output, error) => {
-                useSessionStore.getState().updateGitActionResult(agentMsgId, index, output, error);
+            (index, output, error, action, command) => {
+                useSessionStore.getState().updateGitActionResult(agentMsgId, index, output, error, action, command);
             },
             // onSessionId
             (sid) => {

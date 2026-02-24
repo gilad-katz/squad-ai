@@ -148,6 +148,9 @@ router.post('/', validateChat, async (req, res) => {
     emit({ type: 'session', sessionId });
 
     try {
+        const completedServerFileActions: any[] = [];
+        const completedGitActions: any[] = [];
+
         // ── Step 1: Orchestrator LLM Call ──────────────────────────────────
         // Convert messages for Gemini API format
         const geminiContents = messages.map((m: any) => {
@@ -180,7 +183,23 @@ router.post('/', validateChat, async (req, res) => {
         const nodeModulesPath = path.join(currentWorkspaceDir, 'node_modules');
         if (!fs.existsSync(nodeModulesPath)) {
             emit({ type: 'phase', phase: 'installing' });
-            await installDependencies(sessionId);
+
+            const gitIndex = completedGitActions.length;
+            const gitAction = {
+                id: `npm-${Date.now()}`,
+                type: 'git_result',
+                index: gitIndex,
+                action: 'execute',
+                command: 'npm install --prefer-offline --no-audit --no-fund',
+                output: ''
+            };
+            completedGitActions.push(gitAction);
+            emit(gitAction);
+
+            await installDependencies(sessionId, (data) => {
+                gitAction.output += data;
+                emit(gitAction);
+            });
         }
 
         try {
@@ -351,9 +370,6 @@ router.post('/', validateChat, async (req, res) => {
         };
 
         // Result collectors for persistence
-        const completedServerFileActions: any[] = [];
-        const completedGitActions: any[] = [];
-
         // Collect all async task factories (lazy — won't execute until invoked by the pool)
         const taskFactories: (() => Promise<void>)[] = [];
 
@@ -713,9 +729,25 @@ router.post('/', validateChat, async (req, res) => {
         while (verifyRetries <= MAX_VERIFY_RETRIES) {
             emit({ type: 'phase', phase: 'verifying' });
 
+            const lintIndex = completedGitActions.length;
+            const lintAction = { id: `lint-${Date.now()}`, type: 'git_result', index: lintIndex, action: 'execute', command: 'npx eslint src', output: '' };
+            completedGitActions.push(lintAction);
+            emit(lintAction);
+
+            const tscIndex = completedGitActions.length;
+            const tscAction = { id: `tsc-${Date.now()}`, type: 'git_result', index: tscIndex, action: 'execute', command: 'npx tsc', output: '' };
+            completedGitActions.push(tscAction);
+            emit(tscAction);
+
             const [lintResults, tscErrors, missingImportErrors] = await Promise.all([
-                lintWorkspace(sessionId),
-                typeCheckWorkspace(sessionId),
+                lintWorkspace(sessionId, (data) => {
+                    lintAction.output += data;
+                    emit(lintAction);
+                }),
+                typeCheckWorkspace(sessionId, (data) => {
+                    tscAction.output += data;
+                    emit(tscAction);
+                }),
                 checkMissingImports(sessionId)
             ]);
 
@@ -816,9 +848,21 @@ router.post('/', validateChat, async (req, res) => {
         }
 
         // ── Step 4.5: Start Dev Server ────────────────────────────────────
-        const devPort = await startDevServer(sessionId);
-        if (devPort) {
-            emit({ type: 'preview', url: `http://localhost:${devPort}` });
+        const devResult = await startDevServer(sessionId);
+        if (devResult) {
+            emit({ type: 'preview', url: `http://localhost:${devResult.port}` });
+
+            // Also emit the dev server startup logs as a terminal action
+            const gitResult = {
+                id: `dev-${Date.now()}`,
+                type: 'git_result',
+                index: completedGitActions.length,
+                output: devResult.logs,
+                command: devResult.command,
+                action: 'execute'
+            };
+            completedGitActions.push(gitResult);
+            emit(gitResult);
         }
 
         // ── Step 5: Finalize History persistence ──
@@ -995,9 +1039,13 @@ router.delete('/:sessionId', async (req, res) => {
 router.post('/:sessionId/dev-server', async (req, res) => {
     const { sessionId } = req.params;
     try {
-        const port = await startDevServer(sessionId);
-        if (port) {
-            res.json({ url: `http://localhost:${port}` });
+        const devResult = await startDevServer(sessionId);
+        if (devResult) {
+            res.json({
+                url: `http://localhost:${devResult.port}`,
+                logs: devResult.logs,
+                command: devResult.command
+            });
         } else {
             res.status(400).json({ error: 'Failed to start dev server or node_modules missing' });
         }
