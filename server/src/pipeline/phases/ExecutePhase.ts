@@ -27,6 +27,18 @@ export class ExecutePhase implements Phase {
 
         ctx.events.emit({ type: 'phase', phase: 'executing' });
 
+        // ── REQ-4.1: Read design tokens if available ─────────────────────
+        let themeContent: string | null = null;
+        try {
+            themeContent = readFile(ctx.sessionId, 'src/constants/theme.ts');
+        } catch { /* theme.ts doesn't exist yet — that's fine */ }
+
+        // Count total file tasks for contextual phase updates (REQ-4.4)
+        const totalFileTasks = plan.tasks.filter(t =>
+            t.type === 'create_file' || t.type === 'edit_file' || t.type === 'generate_image'
+        ).length;
+        let completedFileTasks = 0;
+
         // ── Build Transparency Data ──────────────────────────────────────
         const actionableTasks = plan.tasks
             .map((t, i) => ({ task: t, originalIndex: i }))
@@ -131,9 +143,24 @@ export class ExecutePhase implements Phase {
             if (task.type === 'create_file' || task.type === 'edit_file') {
                 taskFactories.push(() => globalFileQueue.enqueue(task.filepath, async () => {
                     updateTaskStatus(index, 'in_progress');
+
+                    // REQ-4.4: Contextual phase update
+                    completedFileTasks++;
+                    const fileName = task.filepath.split('/').pop() || task.filepath;
+                    ctx.events.emit({
+                        type: 'phase',
+                        phase: 'executing',
+                        detail: `Building ${fileName} (${completedFileTasks} of ${totalFileTasks})`
+                    });
+
                     try {
                         let existingContent: string | null = null;
                         const relatedFiles: Record<string, string> = {};
+
+                        // REQ-4.1: Inject design tokens as related file context
+                        if (themeContent && task.filepath !== 'src/constants/theme.ts') {
+                            relatedFiles['src/constants/theme.ts'] = themeContent;
+                        }
 
                         if (task.type === 'edit_file') {
                             try {

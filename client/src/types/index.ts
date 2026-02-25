@@ -12,8 +12,10 @@ export interface Attachment {
 export interface TransparencyData {
     title?: string;
     reasoning: string;
-    tasks: Array<{ id: number; description: string; status: 'done' | 'in_progress' | 'pending' }>;
+    tasks: Array<{ id: number; description: string; status: 'done' | 'in_progress' | 'pending'; purpose?: string }>;
     assumptions: string;
+    /** REQ-2.3: Design decisions from the orchestrator */
+    design_decisions?: Array<{ question: string; chosen: string; alternatives?: string[] }>;
 }
 
 export type FileActionType = 'created' | 'edited' | 'deleted';

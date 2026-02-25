@@ -38,7 +38,8 @@ export class DeliverPhase implements Phase {
 
         const summaryText = await this.generateSummary(
             ctx.completedFileActions,
-            ctx.completedGitActions
+            ctx.completedGitActions,
+            ctx
         );
 
         if (summaryText) {
@@ -87,25 +88,43 @@ export class DeliverPhase implements Phase {
         return { status: 'continue' };
     }
 
-    private async generateSummary(fileActions: any[], gitActions: any[]): Promise<string> {
+    private async generateSummary(fileActions: any[], gitActions: any[], ctx?: PipelineContext): Promise<string> {
         try {
+            // REQ-7.2: Build quality-aware context
+            let verificationContext = '';
+            if (ctx) {
+                const repairRetries = ((ctx as any)._repairRetryCount || 0) as number;
+                if (repairRetries > 0) {
+                    verificationContext += `\nVERIFICATION & REPAIR:\n- Repair cycles completed: ${repairRetries}\n- All errors resolved: ${!ctx.verificationErrors ? 'Yes' : 'No'}\n`;
+                }
+                if (ctx.verificationErrors) {
+                    const { lintResults, tscErrors } = ctx.verificationErrors;
+                    const remainingLint = lintResults.filter(r => r.errorCount > 0).length;
+                    const remainingTsc = tscErrors.length;
+                    verificationContext += `- Remaining issues: ${remainingLint} lint errors, ${remainingTsc} type errors\n`;
+                } else {
+                    verificationContext += `- Final status: Clean build (0 errors)\n`;
+                }
+            }
+
             const summaryPrompt = `
 You have just completed a series of tasks in a coding workspace.
 Based on the following activities, generate a concise summary of what was accomplished and suggest 2-3 **highly specific, technical** next steps for the user.
 
 COMPLETED FILE ACTIONS:
-${fileActions.map(a => `- ${a.action} ${a.filepath}`).join('\n') || 'None'}
+${fileActions.map(a => `- ${a.action} ${a.filepath}${a.prompt ? ` (purpose: ${a.prompt.substring(0, 100)})` : ''}`).join('\n') || 'None'}
 
 TERMINAL/GIT ACTIONS:
 ${gitActions.map(a => `- ${a.command}: ${a.output?.substring(0, 150)}...`).join('\n') || 'None'}
-
+${verificationContext}
 FORMATTING RULES:
 1. Start with a header "### Summary of Work".
 2. Follow with a header "### Suggested Next Steps" and a bulleted list.
 3. **CRITICAL**: Next steps must be technical and actionable (e.g., "Implement the 'Search' component in 'src/components/Search.tsx'" or "Add 'lucide-react' icons to the navigation menu"). Avoid generic advice like "Improve UI" or "Add more features".
 4. Refer to the existing codebase and context when suggesting steps.
-5. Use a professional and collaborative tone.
-6. Output ONLY the Markdown text.
+5. If verification found and repaired errors, briefly mention what was fixed.
+6. Use a professional and collaborative tone.
+7. Output ONLY the Markdown text.
 `;
 
             const response = await ai.models.generateContent({

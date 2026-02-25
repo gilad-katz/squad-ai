@@ -11,7 +11,7 @@ export interface StreamHandlers {
     onGitResult?: (index: number, output?: string, error?: string, action?: 'clone' | 'execute', command?: string) => void;
     onSessionId?: (id: string) => void;
     onFileAction?: (action: FileAction) => void;
-    onPhase?: (phase: PhaseState) => void;
+    onPhase?: (phase: PhaseState, detail?: string) => void;
     onTransparency?: (data: TransparencyData) => void;
     onPreview?: (url: string) => void;
     onMetadata?: (data: { title?: string }) => void;
@@ -76,7 +76,7 @@ export async function consumeStream(
                             handlers.onSessionId?.(evt.sessionId);
                             break;
                         case 'phase':
-                            handlers.onPhase?.(evt.phase);
+                            handlers.onPhase?.(evt.phase, evt.detail);
                             break;
                         case 'transparency':
                             handlers.onTransparency?.(evt.data);

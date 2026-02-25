@@ -298,3 +298,56 @@ export function formatLintErrorsForPrompt(results: LintResult[], workspaceDir: s
         return `File: ${relativePath}\n${errors}`;
     }).join('\n\n');
 }
+
+// ─── REQ-5.3: Plain Language Error Translation ──────────────────────────────
+// Maps common TypeScript/ESLint error codes to friendly explanations.
+
+const TSC_TRANSLATIONS: Record<string, string> = {
+    'TS2304': "Can't find this name — you may need to import it or declare it",
+    'TS2305': "Trying to import something that doesn't exist in the module — check the export name",
+    'TS2307': "Can't find this module — the file path or package name might be wrong",
+    'TS2322': "Type mismatch — the value doesn't match what's expected (wrong type passed)",
+    'TS2345': "Wrong type passed to a function — the argument type doesn't match the parameter",
+    'TS2339': "This property doesn't exist on the object — check for typos or missing interface fields",
+    'TS2351': "Trying to use 'new' on something that isn't a constructor",
+    'TS2554': "Wrong number of arguments — too many or too few arguments passed",
+    'TS2532': "Value might be undefined — add a null check before using it",
+    'TS2614': "Module doesn't have a default export — use named import { X } instead",
+    'TS6133': "Unused variable — declared but never used",
+    'TS7006': "Missing type annotation — parameter needs an explicit type",
+    'TS1005': "Syntax error — something like a missing semicolon or bracket",
+    'TS1128': "Syntax error — unexpected declaration, likely a missing closing bracket",
+    'TS2451': "Duplicate variable name — this name is already declared in this scope",
+};
+
+const LINT_TRANSLATIONS: Record<string, string> = {
+    'no-unused-vars': "Variable declared but never used — safe to remove",
+    '@typescript-eslint/no-unused-vars': "Variable declared but never used — safe to remove",
+    'no-undef': "Variable not defined — needs to be imported or declared",
+    'react/jsx-no-undef': "Component not imported — add an import statement",
+    'import/no-unresolved': "Can't find this import — check the file path",
+    'no-console': "Console.log left in code — remove for production",
+    'react-hooks/rules-of-hooks': "React Hook used incorrectly — must be at top level of component",
+    'react-hooks/exhaustive-deps': "Missing dependency in useEffect/useCallback — add it to the array",
+};
+
+/**
+ * REQ-5.3: Translates a tsc or ESLint error into plain language.
+ */
+export function translateErrorToPlainLanguage(errorLine: string): string | null {
+    // Try tsc error codes
+    const tscMatch = errorLine.match(/TS(\d{4,5})/);
+    if (tscMatch) {
+        const code = `TS${tscMatch[1]}`;
+        return TSC_TRANSLATIONS[code] || null;
+    }
+
+    // Try lint rule IDs
+    for (const [ruleId, translation] of Object.entries(LINT_TRANSLATIONS)) {
+        if (errorLine.includes(ruleId)) {
+            return translation;
+        }
+    }
+
+    return null;
+}

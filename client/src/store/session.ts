@@ -7,6 +7,7 @@ interface SessionStore {
     messages: Message[];
     streamActive: boolean;
     phase: PhaseState;
+    phaseDetail: string | null;
     contextWarning: boolean;
     sessionId: string | null;
     sessionTitle: string | null;
@@ -20,7 +21,7 @@ interface SessionStore {
     appendAgentDelta: (id: string, delta: string) => void;
     finaliseAgentMessage: (id: string) => void;
     setAgentError: (id: string, msg: string) => void;
-    setPhase: (phase: PhaseState) => void;
+    setPhase: (phase: PhaseState, detail?: string) => void;
     setContextWarning: (warning: boolean) => void;
     setSessionId: (id: string) => void;
     addFileActions: (msgId: string, actions: FileAction[]) => void;
@@ -39,6 +40,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     messages: [],
     streamActive: false,
     phase: 'ready',
+    phaseDetail: null,
     contextWarning: false,
     sessionId: localStorage.getItem(SESSION_STORAGE_KEY),
     sessionTitle: null,
@@ -101,6 +103,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     finaliseAgentMessage: (id) => set(s => ({
         streamActive: false,
         phase: 'ready',
+        phaseDetail: null,
         messages: s.messages.map(m => {
             if (m.id !== id) return m;
 
@@ -123,12 +126,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     setAgentError: (id, msg) => set(s => ({
         streamActive: false,
         phase: 'ready',
+        phaseDetail: null,
         messages: s.messages.map(m =>
             m.id === id ? { ...m, status: 'error', content: m.content + '\n\n' + msg, displayContent: m.displayContent + '\n\n' + msg } : m
         )
     })),
 
-    setPhase: (phase) => set({ phase }),
+    setPhase: (phase, detail) => set({ phase, phaseDetail: detail || null }),
 
     setContextWarning: (warning) => set({ contextWarning: warning }),
 
@@ -197,6 +201,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             messages: [],
             streamActive: false,
             phase: 'ready',
+            phaseDetail: null,
             contextWarning: false,
             sessionId: null,
             sessionTitle: null,
@@ -317,6 +322,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             messages: [],
             streamActive: false,
             phase: 'ready',
+            phaseDetail: null,
             contextWarning: false,
             sessionId: id,
             sessionTitle: null,

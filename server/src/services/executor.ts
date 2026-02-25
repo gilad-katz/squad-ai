@@ -38,6 +38,15 @@ Before outputting code, mentally verify:
 3. **Logic Completeness**: Are all functions fully implemented? No placeholders.
 4. **Visual Excellence**: Does this code represent a premium, world-class UI?
 
+POLISHED OUTPUT STANDARD (CRITICAL — REQ-4.2):
+Every component you generate must meet these quality bars:
+1. **No empty states**: EVERY component must handle loading, error, and empty data gracefully. Use skeleton loaders for loading states, friendly error messages for errors, and meaningful empty states (not blank screens).
+2. **No placeholder text**: Use real, contextual content — NEVER \"Lorem ipsum\", \"placeholder\", or \"coming soon\". For a restaurant site use real-sounding menu items; for a portfolio use realistic project descriptions.
+3. **Micro-interactions REQUIRED**: Every button, card, link, and interactive element MUST have: hover effects, focus rings, smooth transitions (150-300ms), and active states. Static UIs are unacceptable.
+4. **Page title and favicon**: If creating App.tsx or the main layout, set document.title and ensure a favicon reference exists.
+5. **Responsive design**: Use CSS Grid / Flexbox with responsive breakpoints. Test mentally at 375px (mobile), 768px (tablet), and 1280px (desktop).
+6. **Design tokens**: If \`src/constants/theme.ts\` exists (check the MANIFEST), import and use its tokens for ALL colors, spacing, fonts, and shadows. Do NOT hardcode hex values.
+
 IMAGE RULE (STRICT):
 - NEVER use external image URLs. Use inline SVGs, CSS gradients, or local path references (e.g., \`/images/hero.jpg\`).
 

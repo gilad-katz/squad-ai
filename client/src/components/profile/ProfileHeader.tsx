@@ -13,6 +13,7 @@ interface ProfileHeaderProps {
 
 export const ProfileHeader: React.FC<ProfileHeaderProps> = ({ phase, onNewSession }) => {
     const previewUrl = useSessionStore(state => state.previewUrl);
+    const phaseDetail = useSessionStore(state => state.phaseDetail);
 
     return (
         <header className="fixed top-0 left-0 right-0 h-16 glass-effect px-6 flex items-center justify-between z-50 shadow-sm border-b border-gray-200/50">
@@ -49,7 +50,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({ phase, onNewSessio
                 <GitHeaderButton />
                 <SessionSwitcher />
                 <div className={phase === 'thinking' || phase === 'building' ? 'animate-pulse-soft' : ''}>
-                    <PhaseBadge phase={phase} />
+                    <PhaseBadge phase={phase} detail={phaseDetail ?? undefined} />
                 </div>
                 <div className="w-px h-6 bg-gray-200 mx-1" aria-hidden="true" />
                 <button

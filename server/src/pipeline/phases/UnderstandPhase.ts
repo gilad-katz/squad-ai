@@ -1,8 +1,11 @@
 // ─── Understand Phase ────────────────────────────────────────────────────────
-// Classifies user intent, reads project memory, and analyses the existing
-// codebase BEFORE planning. This prevents the planner from making uninformed
-// decisions and enables proactive clarification.
+// Classifies user intent, performs extended thinking via LLM, reads project
+// memory, and analyses the existing codebase BEFORE planning.
+// REQ-0.3: Extended thinking (deep reasoning before plan)
+// REQ-1.2: Proactive clarification (ask questions when ambiguous)
+// REQ-1.3: Codebase analysis (scan existing files)
 
+import { ai } from '../../services/gemini';
 import { listFiles, readFile } from '../../services/fileService';
 import type { Phase, PhaseResult, PipelineContext } from '../../types/pipeline';
 
@@ -147,17 +150,78 @@ export class UnderstandPhase implements Phase {
                 .join('\n');
         }
 
-        // 6. Store analysis results in context for PlanPhase to use
-        // We attach these as extra properties on the context
+        // 6. REQ-0.3: Extended Thinking — deep reasoning before planning
+        //    For non-trivial intents, ask the LLM to reason about the request
+        let thinkingAnalysis = '';
+        const needsDeepThinking = ['create', 'edit', 'fix', 'refactor'].includes(intent);
+
+        if (needsDeepThinking) {
+            try {
+                thinkingAnalysis = await this.performExtendedThinking(
+                    lastUserMsg.content,
+                    intent,
+                    codebaseSummary,
+                    projectContext || ''
+                );
+            } catch (err) {
+                console.warn('Extended thinking failed, proceeding without:', err);
+            }
+        }
+
+        // 7. REQ-1.2: Proactive Clarification — if request is ambiguous, abort
+        //    and emit clarifying questions as a chat response
+        if (intent === 'unknown' && lastUserMsg.content.split(/\s+/).length < 6) {
+            // Very short, ambiguous request — ask for clarification
+            ctx.events.emit({
+                type: 'delta',
+                text: "I'd love to help! Could you give me a bit more detail about what you'd like? For example:\n\n" +
+                    "- **Build**: \"Create a portfolio website with a hero, projects grid, and contact form\"\n" +
+                    "- **Edit**: \"Change the header background to dark blue\"\n" +
+                    "- **Fix**: \"The button doesn't respond when clicked\"\n\n" +
+                    "The more specific you are, the better I can plan! 🚀"
+            });
+            ctx.events.emit({ type: 'phase', phase: 'ready' });
+            ctx.events.emit({ type: 'done', usage: null, sessionId: ctx.sessionId });
+            return { status: 'abort', reason: 'Clarification requested from user' };
+        }
+
+        // 8. Store analysis results in context for PlanPhase to use
         (ctx as any)._intent = intent;
         (ctx as any)._codebaseSummary = codebaseSummary;
         (ctx as any)._projectContext = projectContext;
-
-        // 7. For purely conversational intents, we still proceed to PlanPhase
-        //    The orchestrator LLM will handle them as chat-only responses.
-        //    In a future iteration, we could handle 'explain' and 'feedback'
-        //    directly here to avoid the LLM call.
+        (ctx as any)._thinkingAnalysis = thinkingAnalysis;
 
         return { status: 'continue' };
+    }
+
+    // ─── REQ-0.3: Extended Thinking ──────────────────────────────────────
+    private async performExtendedThinking(
+        userMessage: string,
+        intent: UserIntent,
+        codebaseSummary: string,
+        projectContext: string
+    ): Promise<string> {
+        const thinkingPrompt = `You are a senior frontend architect about to plan a coding task. Before generating any plan, think deeply about the following:
+
+USER REQUEST: "${userMessage}"
+DETECTED INTENT: ${intent}
+${codebaseSummary ? `\nEXISTING CODEBASE:\n${codebaseSummary}` : '\nNEW PROJECT (no existing files)'}
+${projectContext ? `\nPROJECT CONTEXT:\n${projectContext}` : ''}
+
+Answer these 4 questions concisely (2-3 sentences each):
+
+1. **TRUE INTENT**: What is the user REALLY asking for? Look beyond the surface request.
+2. **BEST ARCHITECTURE**: What's the ideal technical approach? (not just the first one that works)
+3. **RISKS**: What could go wrong? (edge cases, responsive issues, missing data, naming conflicts)
+4. **PREMIUM TOUCHES**: What will make this feel world-class? (micro-animations, loading states, empty states, accessibility)
+
+Output ONLY the analysis as plain text. Be specific, not generic.`;
+
+        const response = await ai.models.generateContent({
+            model: process.env.MODEL_ID || 'gemini-2.5-flash',
+            contents: [{ role: 'user', parts: [{ text: thinkingPrompt }] }]
+        });
+
+        return response.candidates?.[0]?.content?.parts?.[0]?.text || '';
     }
 }

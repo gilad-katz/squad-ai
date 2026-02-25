@@ -1,8 +1,11 @@
 // ─── Verify Phase ────────────────────────────────────────────────────────────
-// Runs ESLint, TypeScript type-check, and missing-import validation.
-// Extracted from chat.ts lines 692-800.
+// Runs ESLint, TypeScript type-check, missing-import validation,
+// and design consistency checks.
+// REQ-5.1: Design consistency checker
+// REQ-5.3: Plain language error translation
 
-import { lintWorkspace, typeCheckWorkspace, checkMissingImports } from '../../services/lintService';
+import { lintWorkspace, typeCheckWorkspace, checkMissingImports, translateErrorToPlainLanguage } from '../../services/lintService';
+import { checkDesignConsistency } from '../../services/designConsistencyChecker';
 import type { Phase, PhaseResult, PipelineContext } from '../../types/pipeline';
 
 export class VerifyPhase implements Phase {
@@ -49,8 +52,41 @@ export class VerifyPhase implements Phase {
             checkMissingImports(ctx.sessionId)
         ]);
 
+        // ── REQ-5.1: Design Consistency Check ───────────────────────────
+        const designErrors = checkDesignConsistency(ctx.sessionId);
+        if (designErrors.length > 0) {
+            const designWarnings = designErrors.slice(0, 5); // cap at 5 for readability
+            const warningText = designWarnings
+                .map(e => `  ⚠️ ${e.filepath}:${e.line} — ${e.message}`)
+                .join('\n');
+            ctx.events.emit({
+                type: 'delta',
+                text: `\n**Design Consistency Warnings** (${designErrors.length} total):\n${warningText}\n${designErrors.length > 5 ? `  ...and ${designErrors.length - 5} more\n` : ''}`
+            });
+            // Store on context for summary
+            (ctx as any)._designWarnings = designErrors.length;
+        }
+
         // Merge missing-import errors into tsc errors
         const allTscErrors = [...tscErrors, ...missingImportErrors];
+
+        // ── REQ-5.3: Emit plain language error translations ─────────────
+        if (allTscErrors.length > 0) {
+            const translations = allTscErrors
+                .map(err => {
+                    const plain = translateErrorToPlainLanguage(err);
+                    return plain ? `  💡 ${plain}` : null;
+                })
+                .filter((t, i, arr) => t && arr.indexOf(t) === i) // unique only
+                .slice(0, 5);
+
+            if (translations.length > 0) {
+                ctx.events.emit({
+                    type: 'delta',
+                    text: `\n**What went wrong** (plain language):\n${translations.join('\n')}\n`
+                });
+            }
+        }
 
         const hasLintErrors = lintResults.some(r => r.errorCount > 0);
         const hasTscErrors = allTscErrors.length > 0;

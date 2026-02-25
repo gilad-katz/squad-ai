@@ -12,12 +12,24 @@ export interface TaskCreateFile {
     type: 'create_file';
     filepath: string;
     prompt: string;
+    /** REQ-2.2: Human-readable purpose of this file */
+    purpose?: string;
+    /** REQ-2.2: File paths this task depends on */
+    depends_on?: string[];
+    /** REQ-2.2: File paths that consume this task's output */
+    feeds_into?: string[];
 }
 
 export interface TaskEditFile {
     type: 'edit_file';
     filepath: string;
     prompt: string;
+    /** REQ-2.2: Human-readable purpose of this edit */
+    purpose?: string;
+    /** REQ-2.2: File paths this task depends on */
+    depends_on?: string[];
+    /** REQ-2.2: File paths that consume this task's output */
+    feeds_into?: string[];
 }
 
 export interface TaskDeleteFile {
@@ -42,6 +54,12 @@ export interface ExecutionPlan {
     title?: string;
     reasoning: string;
     assumptions?: string;
+    /** REQ-2.3: Design decisions with rationale */
+    design_decisions?: Array<{
+        question: string;
+        chosen: string;
+        alternatives?: string[];
+    }>;
     tasks: ExecutionTask[];
 }
 

@@ -33,6 +33,23 @@ export const TransparencyPanel: React.FC<TransparencyPanelProps> = ({ data, isSt
                 <p className="text-sm text-gray-400 leading-relaxed font-medium">
                     {data.reasoning || 'Analyzing requirements and planning implementation steps.'}
                 </p>
+
+                {/* REQ-2.3: Design Decisions */}
+                {data.design_decisions && data.design_decisions.length > 0 && (
+                    <div className="mt-3 space-y-1.5">
+                        {data.design_decisions.map((d, i) => (
+                            <div key={i} className="flex items-baseline gap-2 text-xs">
+                                <span className="text-gray-500 font-medium shrink-0">{d.question}:</span>
+                                <span className="text-blue-400 font-semibold">{d.chosen}</span>
+                                {d.alternatives && d.alternatives.length > 0 && (
+                                    <span className="text-gray-600 text-[10px]">
+                                        (vs {d.alternatives.join(', ')})
+                                    </span>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* Files Edited Section */}

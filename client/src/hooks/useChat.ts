@@ -127,8 +127,8 @@ export function useChat() {
                     useSessionStore.getState().addServerFileAction(agentMsgId, action);
                 },
                 // onPhase — phase transitions from the backend orchestrator
-                onPhase: (phase) => {
-                    useSessionStore.getState().setPhase(phase);
+                onPhase: (phase, detail) => {
+                    useSessionStore.getState().setPhase(phase, detail);
                 },
                 // onTransparency — reasoning and task breakdown from the orchestrator
                 onTransparency: (data) => {

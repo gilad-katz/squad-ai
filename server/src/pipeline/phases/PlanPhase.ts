@@ -118,6 +118,12 @@ export class PlanPhase implements Phase {
             systemInstruction += `\n\nCODEBASE STRUCTURE:\n${codebaseSummary}`;
         }
 
+        // Inject extended thinking analysis if available
+        const thinkingAnalysis = (ctx as any)._thinkingAnalysis;
+        if (thinkingAnalysis) {
+            systemInstruction += `\n\nPRE-PLANNING ANALYSIS (use this to inform your plan):\n${thinkingAnalysis}`;
+        }
+
         // Convert messages for Gemini API format
         ctx.geminiContents = convertToGeminiContents(ctx.messages);
 
