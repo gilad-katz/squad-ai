@@ -10,6 +10,7 @@ export interface Attachment {
 }
 
 export interface TransparencyData {
+    title?: string;
     reasoning: string;
     tasks: Array<{ id: number; description: string; status: 'done' | 'in_progress' | 'pending' }>;
     assumptions: string;

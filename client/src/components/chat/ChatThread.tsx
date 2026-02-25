@@ -95,7 +95,6 @@ export const ChatThread: React.FC<ChatThreadProps> = ({ onRetry }) => {
     const isAssistantStarting = lastMsg?.role === 'assistant' && !lastMsg.displayContent && !lastMsg.transparency;
     const showThinkingIndicator = phase === 'thinking' || phase === 'planning' || phase === 'executing' || (phase === 'responding' && isAssistantStarting);
 
-    const phaseLabel = phase === 'planning' ? 'Planning...' : phase === 'executing' ? 'Generating files...' : 'Thinking...';
 
     return (
         <main ref={scrollerRef} onScroll={handleScroll} className="flex-1 w-full overflow-y-auto bg-gray-50 pt-24 pb-32">
@@ -158,13 +157,15 @@ export const ChatThread: React.FC<ChatThreadProps> = ({ onRetry }) => {
                         ))}
                         {showThinkingIndicator && (
                             <div className="flex justify-start w-full mb-12 animate-fade-in">
-                                <div className="flex gap-3 items-center bg-white border border-gray-100 rounded-2xl rounded-tl-sm shadow-md px-6 py-4 ml-2 border-l-4 border-l-blue-500">
-                                    <div className="flex gap-1.5">
-                                        <div className="w-2 h-2 rounded-full bg-blue-500 animate-[bounce_1s_infinite_0ms]"></div>
-                                        <div className="w-2 h-2 rounded-full bg-blue-500 animate-[bounce_1s_infinite_200ms]"></div>
-                                        <div className="w-2 h-2 rounded-full bg-blue-500 animate-[bounce_1s_infinite_400ms]"></div>
+                                <div className="flex bg-white/80 backdrop-blur-sm border border-gray-100 rounded-full shadow-lg px-5 py-2.5 ml-2 items-center gap-4">
+                                    <div className="flex gap-1">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
+                                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse delay-75"></div>
+                                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse delay-150"></div>
                                     </div>
-                                    <span className="text-sm text-gray-400 font-semibold tracking-wide uppercase">{phaseLabel}</span>
+                                    <span className="text-[11px] font-black text-gray-800 uppercase tracking-tighter tabular-nums">
+                                        Thinking...
+                                    </span>
                                 </div>
                             </div>
                         )}

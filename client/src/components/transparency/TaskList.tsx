@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, CircleDashed, PlayCircle } from 'lucide-react';
+import { CheckCircle2, CircleDashed, PlayCircle, Timer } from 'lucide-react';
 
 interface TaskListProps {
     tasks: Array<{ id: number; description: string; status: 'done' | 'in_progress' | 'pending' }>;
@@ -11,33 +11,43 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks }) => {
     const getStatusIcon = (status: string) => {
         switch (status) {
             case 'done':
-                return <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />;
+                return <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />;
             case 'in_progress':
-                return <PlayCircle className="w-4 h-4 text-blue-500 flex-shrink-0" />;
+                return <PlayCircle className="w-3.5 h-3.5 text-blue-400 animate-pulse flex-shrink-0" />;
             case 'pending':
             default:
-                return <CircleDashed className="w-4 h-4 text-gray-400 flex-shrink-0" />;
+                return <CircleDashed className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" />;
         }
     };
 
     return (
-        <div className="mb-6 animate-fade-in" style={{ animationDelay: '0.1s' }}>
-            <h4 className="text-[10px] font-bold text-indigo-600 uppercase tracking-[0.2em] mb-4 items-center flex gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(79,70,229,0.4)]"></span>
-                Task Breakdown <span className="bg-indigo-50 text-indigo-600 rounded-lg px-2 py-0.5 text-[9px] font-black leading-none">{tasks.length}</span>
-            </h4>
-            <ul className="space-y-3 pl-1">
-                {tasks.map((task, idx) => (
-                    <li key={task.id || idx} className="flex gap-3 text-sm text-gray-700 items-start group">
-                        <div className="mt-0.5 transition-transform group-hover:scale-110 duration-200" aria-hidden="true" title={`Status: ${task.status}`}>
-                            {getStatusIcon(task.status)}
+        <div className="space-y-4 animate-fade-in">
+            {tasks.map((task, idx) => (
+                <div key={task.id || idx} className="flex gap-4 group">
+                    <div className="flex flex-col items-center">
+                        <span className="text-[11px] font-bold text-gray-500 mb-1.5">{idx + 1}</span>
+                        <div className="w-px h-full bg-gray-800 group-last:hidden"></div>
+                    </div>
+                    <div className="flex-1 pb-4 group-last:pb-0">
+                        <div className="flex items-start gap-3">
+                            <div className="mt-1 transition-transform group-hover:scale-110 duration-200">
+                                {getStatusIcon(task.status)}
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                <span className={`text-sm leading-snug transition-colors ${task.status === 'done' ? 'text-gray-500' : 'text-gray-200 font-semibold'}`}>
+                                    {task.description}
+                                </span>
+                                {task.status === 'in_progress' && (
+                                    <div className="flex items-center gap-2 mt-1 px-2 py-1 bg-gray-800/80 rounded border border-gray-700/50 w-fit">
+                                        <Timer className="w-3 h-3 text-blue-400" />
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Thought for 28s</span>
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                        <span className={`leading-relaxed transition-colors ${task.status === 'done' ? 'text-gray-400 line-through decoration-gray-200 font-medium' : 'text-gray-700 font-semibold'}`}>
-                            {task.description}
-                        </span>
-                    </li>
-                ))}
-            </ul>
+                    </div>
+                </div>
+            ))}
         </div>
     );
 };

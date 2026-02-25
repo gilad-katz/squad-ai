@@ -1,0 +1,65 @@
+// ─── Execution Plan Types ────────────────────────────────────────────────────
+// Shared types for the orchestrator plan and task dispatch.
+
+export type TaskType = 'chat' | 'create_file' | 'edit_file' | 'delete_file' | 'generate_image' | 'git_action';
+
+export interface TaskChat {
+    type: 'chat';
+    content: string;
+}
+
+export interface TaskCreateFile {
+    type: 'create_file';
+    filepath: string;
+    prompt: string;
+}
+
+export interface TaskEditFile {
+    type: 'edit_file';
+    filepath: string;
+    prompt: string;
+}
+
+export interface TaskDeleteFile {
+    type: 'delete_file';
+    filepath: string;
+}
+
+export interface TaskGenerateImage {
+    type: 'generate_image';
+    filepath: string;
+    prompt: string;
+}
+
+export interface TaskGitAction {
+    type: 'git_action';
+    command: string;
+}
+
+export type ExecutionTask = TaskChat | TaskCreateFile | TaskEditFile | TaskDeleteFile | TaskGenerateImage | TaskGitAction;
+
+export interface ExecutionPlan {
+    title?: string;
+    reasoning: string;
+    assumptions?: string;
+    tasks: ExecutionTask[];
+}
+
+// ─── Transparency Types ─────────────────────────────────────────────────────
+
+export type TransparencyTaskStatus = 'pending' | 'in_progress' | 'done';
+
+export interface TransparencyTask {
+    id: number;
+    description: string;
+    status: TransparencyTaskStatus;
+    /** Index in the original plan.tasks array (internal only, not sent to client) */
+    _planIndex: number;
+}
+
+export interface TransparencyData {
+    title: string;
+    reasoning: string;
+    tasks: Array<{ id: number; description: string; status: TransparencyTaskStatus }>;
+    assumptions: string;
+}

@@ -83,6 +83,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
                     <TransparencyPanel
                         data={message.transparency}
                         isStreaming={message.status === 'streaming'}
+                        fileActions={mergedFileActions}
                     />
                 )}
 
