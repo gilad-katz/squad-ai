@@ -12,7 +12,7 @@ export const AppShell: React.FC = () => {
     const streamActive = useSessionStore(state => state.streamActive);
     const startNewSession = useSessionStore(state => state.startNewSession);
     const restoreSession = useSessionStore(state => state.restoreSession);
-    const { sendMessage } = useChat();
+    const { sendMessage, stopGeneration } = useChat();
     const fetchConfig = useWorkspaceStore(state => state.fetchConfig);
 
     // Fetch persisted workspace git config and restore session on mount
@@ -29,7 +29,7 @@ export const AppShell: React.FC = () => {
         <div className="h-screen flex flex-col bg-gray-50 overflow-hidden font-sans text-gray-900">
             <ProfileHeader phase={phase} onNewSession={handleNewSession} />
             <ChatThread onRetry={(id) => sendMessage('', undefined, id)} />
-            <MessageComposer onSend={(text, attachments) => sendMessage(text, attachments)} disabled={streamActive} />
+            <MessageComposer onSend={(text, attachments) => sendMessage(text, attachments)} onStop={stopGeneration} disabled={streamActive} />
             <GitSettingsPanel />
         </div>
     );

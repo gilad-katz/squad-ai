@@ -152,5 +152,20 @@ export function useChat() {
         );
     };
 
-    return { sendMessage };
+    // REQ-3.3: Stop/interrupt the running pipeline
+    const stopGeneration = async () => {
+        const sessionId = useSessionStore.getState().sessionId;
+        if (!sessionId || !store.streamActive) return;
+
+        try {
+            await fetch(`/api/chat/interrupt/${sessionId}`, { method: 'POST' });
+        } catch (err) {
+            console.warn('Failed to send interrupt:', err);
+        }
+
+        // Reset client-side state immediately
+        useSessionStore.getState().setPhase('ready');
+    };
+
+    return { sendMessage, stopGeneration };
 }

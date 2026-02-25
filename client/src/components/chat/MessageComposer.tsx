@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { SendHorizonal, Image as ImageIcon, X } from 'lucide-react';
+import { SendHorizonal, Image as ImageIcon, X, Square } from 'lucide-react';
 import type { Attachment } from '../../types';
 
 interface MessageComposerProps {
     onSend?: (text: string, attachments?: Attachment[]) => void;
+    onStop?: () => void;
     disabled?: boolean;
 }
 
-export const MessageComposer: React.FC<MessageComposerProps> = ({ onSend = () => { }, disabled }) => {
+export const MessageComposer: React.FC<MessageComposerProps> = ({ onSend = () => { }, onStop, disabled }) => {
     const [input, setInput] = useState('');
     const [attachments, setAttachments] = useState<Attachment[]>([]);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -136,15 +137,26 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({ onSend = () =>
                         className="w-full max-h-[200px] py-4 bg-transparent outline-none resize-none leading-relaxed text-gray-900 placeholder:text-gray-400 disabled:opacity-50 text-base"
                         style={{ height: '56px' }}
                     />
-                    <div className="py-3">
-                        <button
-                            onClick={handleSend}
-                            disabled={(!input.trim() && attachments.length === 0) || disabled}
-                            className="p-2.5 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white disabled:from-gray-200 disabled:to-gray-200 disabled:text-gray-400 hover:shadow-lg hover:shadow-blue-500/20 transition-all hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                            aria-label="Send message"
-                        >
-                            <SendHorizonal className="w-5 h-5" />
-                        </button>
+                    <div className="py-3 flex items-center gap-1.5">
+                        {disabled && onStop ? (
+                            <button
+                                onClick={onStop}
+                                className="p-2.5 rounded-xl bg-gradient-to-br from-red-500 to-red-600 text-white hover:shadow-lg hover:shadow-red-500/20 transition-all hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 animate-pulse"
+                                aria-label="Stop generation"
+                                title="Stop generation"
+                            >
+                                <Square className="w-4 h-4 fill-current" />
+                            </button>
+                        ) : (
+                            <button
+                                onClick={handleSend}
+                                disabled={(!input.trim() && attachments.length === 0) || disabled}
+                                className="p-2.5 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white disabled:from-gray-200 disabled:to-gray-200 disabled:text-gray-400 hover:shadow-lg hover:shadow-blue-500/20 transition-all hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                                aria-label="Send message"
+                            >
+                                <SendHorizonal className="w-5 h-5" />
+                            </button>
+                        )}
                     </div>
                 </div>
                 <div className="text-center mt-2 pb-1">

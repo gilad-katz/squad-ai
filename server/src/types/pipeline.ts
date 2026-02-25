@@ -88,6 +88,12 @@ export interface PipelineContext {
         tscErrors: string[];
         missingImportErrors: string[];
     } | null;
+
+    /** REQ-4.5: Timestamp when the current phase started */
+    phaseStartTime: number;
+
+    /** REQ-4.5: Timestamp when the entire pipeline started */
+    pipelineStartTime: number;
 }
 
 // ─── Phase Interface ────────────────────────────────────────────────────────

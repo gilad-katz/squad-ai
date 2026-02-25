@@ -275,9 +275,18 @@ export class ExecutePhase implements Phase {
                 taskFactories.push(async () => {
                     updateTaskStatus(index, 'in_progress');
                     try {
+                        // REQ-4.3: Image prompt quality gate — enhance short/vague prompts
+                        let finalPrompt = task.prompt;
+                        if (finalPrompt.split(/\s+/).length < 10) {
+                            finalPrompt += '. High quality, professional, well-lit, detailed, modern aesthetic.';
+                        }
+                        if (!/style|aesthetic|quality|resolution|detailed/i.test(finalPrompt)) {
+                            finalPrompt += ' Ultra high quality, photorealistic, sharp focus.';
+                        }
+
                         const response = await ai.models.generateContent({
                             model: 'gemini-2.5-flash-image',
-                            contents: task.prompt
+                            contents: finalPrompt
                         });
 
                         const candidate = response.candidates?.[0];

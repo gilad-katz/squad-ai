@@ -31,6 +31,8 @@ export class PipelineEngine {
 
             let result: PhaseResult;
             try {
+                // REQ-4.5: Track phase timing
+                ctx.phaseStartTime = Date.now();
                 result = await phase.execute(ctx);
             } catch (err: any) {
                 console.error(`Phase "${phase.name}" threw an error:`, err);

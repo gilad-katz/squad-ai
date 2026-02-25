@@ -50,7 +50,7 @@ export interface GitResultEvent {
 
 export type SSEEvent =
     | { type: 'session'; sessionId: string }
-    | { type: 'phase'; phase: PhaseState; detail?: string }
+    | { type: 'phase'; phase: PhaseState; detail?: string; elapsed_ms?: number }
     | { type: 'delta'; text: string }
     | { type: 'transparency'; data: TransparencyData }
     | FileActionEvent

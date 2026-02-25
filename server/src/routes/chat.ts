@@ -19,6 +19,9 @@ import path from 'path';
 
 const router = Router();
 
+// REQ-3.3: Track active pipeline EventBus instances by session ID for interrupt
+const activeSessions = new Map<string, EventBus>();
+
 // ─── Main Chat Route (Pipeline) ─────────────────────────────────────────────
 
 router.post('/', validateChat, async (req, res) => {
@@ -53,6 +56,8 @@ router.post('/', validateChat, async (req, res) => {
             completedFileActions: [],
             completedGitActions: [],
             verificationErrors: null,
+            phaseStartTime: Date.now(),
+            pipelineStartTime: Date.now(),
         };
 
         // Build and run the pipeline
@@ -65,11 +70,29 @@ router.post('/', validateChat, async (req, res) => {
             .addPhase(new RepairPhase())
             .addPhase(new DeliverPhase());
 
+        // REQ-3.3: Register this session's EventBus for interrupt support
+        activeSessions.set(sessionId, events);
+
         await pipeline.run(ctx);
     } catch (err: any) {
         events.emit({ type: 'error', message: classifyError(err) });
     } finally {
+        activeSessions.delete(sessionId);
         events.close();
+    }
+});
+
+// ─── REQ-3.3: Interrupt Route ────────────────────────────────────────────────
+
+router.post('/interrupt/:sessionId', (req, res) => {
+    const { sessionId } = req.params;
+    const bus = activeSessions.get(sessionId);
+    if (bus) {
+        bus.interrupt(sessionId);
+        activeSessions.delete(sessionId);
+        res.json({ status: 'interrupted', sessionId });
+    } else {
+        res.status(404).json({ error: 'No active pipeline for this session' });
     }
 });
 
