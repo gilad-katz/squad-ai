@@ -108,6 +108,16 @@ export class PlanPhase implements Phase {
             systemInstruction += memoryContext;
         }
 
+        // Inject UnderstandPhase analysis if available
+        const codebaseSummary = (ctx as any)._codebaseSummary;
+        const intent = (ctx as any)._intent;
+        if (intent) {
+            systemInstruction += `\n\nDETECTED USER INTENT: ${intent}`;
+        }
+        if (codebaseSummary) {
+            systemInstruction += `\n\nCODEBASE STRUCTURE:\n${codebaseSummary}`;
+        }
+
         // Convert messages for Gemini API format
         ctx.geminiContents = convertToGeminiContents(ctx.messages);
 

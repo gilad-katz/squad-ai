@@ -5,7 +5,9 @@ import { ProjectMemory } from '../services/projectMemory';
 import { PipelineEngine } from '../pipeline/PipelineEngine';
 import { EventBus } from '../pipeline/EventBus';
 import { convertToGeminiContents, classifyError } from '../pipeline/helpers';
+import { UnderstandPhase } from '../pipeline/phases/UnderstandPhase';
 import { PlanPhase } from '../pipeline/phases/PlanPhase';
+import { ConfirmPhase } from '../pipeline/phases/ConfirmPhase';
 import { ExecutePhase } from '../pipeline/phases/ExecutePhase';
 import { VerifyPhase } from '../pipeline/phases/VerifyPhase';
 import { RepairPhase } from '../pipeline/phases/RepairPhase';
@@ -55,7 +57,9 @@ router.post('/', validateChat, async (req, res) => {
 
         // Build and run the pipeline
         const pipeline = new PipelineEngine()
+            .addPhase(new UnderstandPhase())
             .addPhase(new PlanPhase())
+            .addPhase(new ConfirmPhase())
             .addPhase(new ExecutePhase())
             .addPhase(new VerifyPhase())
             .addPhase(new RepairPhase())

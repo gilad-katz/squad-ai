@@ -89,63 +89,65 @@ export function useChat() {
         await consumeStream(
             apiMessages,
             sessionId,
-            // onDelta — conversational text from the orchestrator chat tasks
-            (delta) => {
-                useSessionStore.getState().appendAgentDelta(agentMsgId, delta);
-            },
-            // onDone — finalize
-            (usage, returnedSessionId) => {
-                useSessionStore.getState().finaliseAgentMessage(agentMsgId);
+            {
+                // onDelta — conversational text from the orchestrator chat tasks
+                onDelta: (delta) => {
+                    useSessionStore.getState().appendAgentDelta(agentMsgId, delta);
+                },
+                // onDone — finalize
+                onDone: (usage, returnedSessionId) => {
+                    useSessionStore.getState().finaliseAgentMessage(agentMsgId);
 
-                if (returnedSessionId) {
-                    useSessionStore.getState().setSessionId(returnedSessionId);
-                }
-
-                if (usage) {
-                    const totalTokens = usage.input_tokens + usage.output_tokens;
-                    const contextLimit = 1000000;
-                    if (totalTokens > contextLimit * 0.80) {
-                        useSessionStore.getState().setContextWarning(true);
+                    if (returnedSessionId) {
+                        useSessionStore.getState().setSessionId(returnedSessionId);
                     }
+
+                    if (usage) {
+                        const totalTokens = usage.input_tokens + usage.output_tokens;
+                        const contextLimit = 1000000;
+                        if (totalTokens > contextLimit * 0.80) {
+                            useSessionStore.getState().setContextWarning(true);
+                        }
+                    }
+                },
+                // onError
+                onError: (msg) => {
+                    useSessionStore.getState().setAgentError(agentMsgId, msg);
+                },
+                // onGitResult
+                onGitResult: (index, output, error, action, command) => {
+                    useSessionStore.getState().updateGitActionResult(agentMsgId, index, output, error, action, command);
+                },
+                // onSessionId
+                onSessionId: (sid) => {
+                    useSessionStore.getState().setSessionId(sid);
+                },
+                // onFileAction — discrete file events from the orchestrator dispatcher
+                onFileAction: (action) => {
+                    useSessionStore.getState().addServerFileAction(agentMsgId, action);
+                },
+                // onPhase — phase transitions from the backend orchestrator
+                onPhase: (phase) => {
+                    useSessionStore.getState().setPhase(phase);
+                },
+                // onTransparency — reasoning and task breakdown from the orchestrator
+                onTransparency: (data) => {
+                    useSessionStore.getState().setTransparency(agentMsgId, data);
+                },
+                // onPreview — dev server URL
+                onPreview: (url) => {
+                    useSessionStore.getState().setPreviewUrl(url);
+                },
+                // onMetadata
+                onMetadata: (data) => {
+                    if (data.title) {
+                        useSessionStore.getState().setSessionTitle(data.title);
+                    }
+                },
+                // onSummary
+                onSummary: (text) => {
+                    useSessionStore.getState().setSummary(agentMsgId, text);
                 }
-            },
-            // onError
-            (msg) => {
-                useSessionStore.getState().setAgentError(agentMsgId, msg);
-            },
-            // onGitResult
-            (index, output, error, action, command) => {
-                useSessionStore.getState().updateGitActionResult(agentMsgId, index, output, error, action, command);
-            },
-            // onSessionId
-            (sid) => {
-                useSessionStore.getState().setSessionId(sid);
-            },
-            // onFileAction — discrete file events from the orchestrator dispatcher
-            (action) => {
-                useSessionStore.getState().addServerFileAction(agentMsgId, action);
-            },
-            // onPhase — phase transitions from the backend orchestrator
-            (phase) => {
-                useSessionStore.getState().setPhase(phase);
-            },
-            // onTransparency — reasoning and task breakdown from the orchestrator
-            (data) => {
-                useSessionStore.getState().setTransparency(agentMsgId, data);
-            },
-            // onPreview — dev server URL
-            (url) => {
-                useSessionStore.getState().setPreviewUrl(url);
-            },
-            // onMetadata
-            (data) => {
-                if (data.title) {
-                    useSessionStore.getState().setSessionTitle(data.title);
-                }
-            },
-            // onSummary
-            (text) => {
-                useSessionStore.getState().setSummary(agentMsgId, text);
             }
         );
     };

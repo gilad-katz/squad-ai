@@ -1,19 +1,29 @@
 import type { Message, FileAction, PhaseState, TransparencyData } from '../types';
 
+// ─── Stream Handler Map ──────────────────────────────────────────────────────
+// Replaces the previous 12 positional callback parameters with a single
+// typed object. This makes adding new event handlers safe and readable.
+
+export interface StreamHandlers {
+    onDelta: (text: string) => void;
+    onDone: (usage?: { input_tokens: number; output_tokens: number }, sessionId?: string) => void;
+    onError: (msg: string) => void;
+    onGitResult?: (index: number, output?: string, error?: string, action?: 'clone' | 'execute', command?: string) => void;
+    onSessionId?: (id: string) => void;
+    onFileAction?: (action: FileAction) => void;
+    onPhase?: (phase: PhaseState) => void;
+    onTransparency?: (data: TransparencyData) => void;
+    onPreview?: (url: string) => void;
+    onMetadata?: (data: { title?: string }) => void;
+    onSummary?: (text: string) => void;
+}
+
+// ─── Stream Consumer ─────────────────────────────────────────────────────────
+
 export async function consumeStream(
     messages: Pick<Message, 'role' | 'content' | 'attachments'>[],
     sessionId: string | null,
-    onDelta: (text: string) => void,
-    onDone: (usage?: { input_tokens: number, output_tokens: number }, sessionId?: string) => void,
-    onError: (msg: string) => void,
-    onGitResult?: (index: number, output?: string, error?: string, action?: 'clone' | 'execute', command?: string) => void,
-    onSessionId?: (id: string) => void,
-    onFileAction?: (action: FileAction) => void,
-    onPhase?: (phase: PhaseState) => void,
-    onTransparency?: (data: TransparencyData) => void,
-    onPreview?: (url: string) => void,
-    onMetadata?: (data: { title?: string }) => void,
-    onSummary?: (text: string) => void
+    handlers: StreamHandlers
 ): Promise<void> {
     try {
         const response = await fetch('/api/chat', {
@@ -23,7 +33,7 @@ export async function consumeStream(
         });
 
         if (!response.ok || !response.body) {
-            onError(`Request failed: HTTP ${response.status}`);
+            handlers.onError(`Request failed: HTTP ${response.status}`);
             return;
         }
 
@@ -45,24 +55,51 @@ export async function consumeStream(
                     if (!payload) continue;
 
                     const evt = JSON.parse(payload);
-                    if (evt.type === 'delta') onDelta(evt.text);
-                    if (evt.type === 'done') onDone(evt.usage, evt.sessionId);
-                    if (evt.type === 'error') onError(evt.message);
-                    if (evt.type === 'git_result' && onGitResult) onGitResult(evt.index, evt.output, evt.error, evt.action, evt.command);
-                    if (evt.type === 'file_action' && onFileAction) onFileAction(evt);
-                    if (evt.type === 'session' && onSessionId) onSessionId(evt.sessionId);
-                    if (evt.type === 'phase' && onPhase) onPhase(evt.phase);
-                    if (evt.type === 'transparency' && onTransparency) onTransparency(evt.data);
-                    if (evt.type === 'preview' && onPreview) onPreview(evt.url);
-                    if (evt.type === 'metadata' && onMetadata) onMetadata(evt.data);
-                    if (evt.type === 'summary' && onSummary) onSummary(evt.text);
+
+                    switch (evt.type) {
+                        case 'delta':
+                            handlers.onDelta(evt.text);
+                            break;
+                        case 'done':
+                            handlers.onDone(evt.usage, evt.sessionId);
+                            break;
+                        case 'error':
+                            handlers.onError(evt.message);
+                            break;
+                        case 'git_result':
+                            handlers.onGitResult?.(evt.index, evt.output, evt.error, evt.action, evt.command);
+                            break;
+                        case 'file_action':
+                            handlers.onFileAction?.(evt);
+                            break;
+                        case 'session':
+                            handlers.onSessionId?.(evt.sessionId);
+                            break;
+                        case 'phase':
+                            handlers.onPhase?.(evt.phase);
+                            break;
+                        case 'transparency':
+                            handlers.onTransparency?.(evt.data);
+                            break;
+                        case 'preview':
+                            handlers.onPreview?.(evt.url);
+                            break;
+                        case 'metadata':
+                            handlers.onMetadata?.(evt.data);
+                            break;
+                        case 'summary':
+                            handlers.onSummary?.(evt.text);
+                            break;
+                        default:
+                            // Unknown event type — ignore gracefully
+                            break;
+                    }
                 } catch (err) {
                     console.warn('Failed to parse SSE line:', line);
                 }
             }
         }
     } catch (err: any) {
-        onError(err.message || 'Stream connection failed');
+        handlers.onError(err.message || 'Stream connection failed');
     }
 }
-
