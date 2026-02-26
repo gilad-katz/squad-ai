@@ -146,3 +146,7 @@ body {
 .stagger-load>*:nth-child(5) {
   animation-delay: 0.42s;
 }
+body.pane-resize-active {
+  user-select: none;
+  cursor: col-resize;
+}

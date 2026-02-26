@@ -6,28 +6,36 @@ interface MessageComposerProps {
     onSend?: (text: string, attachments?: Attachment[]) => void;
     onStop?: () => void;
     disabled?: boolean;
+    docked?: boolean;
 }
 
-export const MessageComposer: React.FC<MessageComposerProps> = ({ onSend = () => { }, onStop, disabled }) => {
+export const MessageComposer: React.FC<MessageComposerProps> = ({ onSend = () => { }, onStop, disabled, docked = false }) => {
     const [input, setInput] = useState('');
     const [attachments, setAttachments] = useState<Attachment[]>([]);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const attachmentsRef = useRef<Attachment[]>([]);
 
-    // Auto-focus logic: Refocus the textarea when the assistant finishes (disabled -> false)
     useEffect(() => {
         if (!disabled) {
             textareaRef.current?.focus();
         }
     }, [disabled]);
 
+    useEffect(() => {
+        attachmentsRef.current = attachments;
+    }, [attachments]);
+
     const handleSend = () => {
         if ((input.trim() || attachments.length > 0) && !disabled) {
             onSend(input.trim(), attachments);
+            attachments.forEach((a) => {
+                if (a.url) URL.revokeObjectURL(a.url);
+            });
             setInput('');
             setAttachments([]);
             if (textareaRef.current) {
-                textareaRef.current.style.height = 'auto'; // Reset after submit
+                textareaRef.current.style.height = 'auto';
             }
         }
     };
@@ -80,15 +88,25 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({ onSend = () =>
     const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         setInput(e.target.value);
 
-        // Auto-grow height
         if (textareaRef.current) {
             textareaRef.current.style.height = 'auto';
             textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`;
         }
     };
 
+    useEffect(() => {
+        return () => {
+            attachmentsRef.current.forEach((a) => {
+                if (a.url) URL.revokeObjectURL(a.url);
+            });
+        };
+    }, []);
+
     return (
-        <div className="fixed bottom-0 left-0 right-0 glass-effect p-4 z-50 shadow-[0_-8px_30px_rgb(0,0,0,0.04)] border-t border-gray-200/50">
+        <div className={docked
+            ? 'relative glass-effect p-4 border-t border-gray-200/50'
+            : 'fixed bottom-0 left-0 right-0 glass-effect p-4 z-50 shadow-[0_-8px_30px_rgb(0,0,0,0.04)] border-t border-gray-200/50'}
+        >
             <div className="max-w-4xl mx-auto flex flex-col gap-2">
                 {attachments.length > 0 && (
                     <div className="flex flex-wrap gap-3 mb-3 animate-fade-in">
