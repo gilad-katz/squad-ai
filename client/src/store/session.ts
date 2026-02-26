@@ -28,7 +28,7 @@ interface SessionStore {
     addServerFileAction: (msgId: string, action: FileAction) => void;
     setTransparency: (msgId: string, data: TransparencyData) => void;
     setSummary: (msgId: string, summary: string) => void;
-    addPhaseThought: (msgId: string, phase: PhaseState, detail?: string) => void;
+    addPhaseThought: (msgId: string, phase: PhaseState, detail?: string, thought?: string) => void;
     appendPhaseThoughtDelta: (msgId: string, delta: string, fallbackPhase?: PhaseState) => void;
     updateGitActionResult: (msgId: string, index: number, output?: string, error?: string, action?: 'clone' | 'execute', command?: string) => void;
     setMessages: (messages: Message[]) => void;
@@ -174,7 +174,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         )
     })),
 
-    addPhaseThought: (msgId, phase, detail) => set(s => ({
+    addPhaseThought: (msgId, phase, detail, thought) => set(s => ({
         messages: s.messages.map(m => {
             if (m.id !== msgId || m.role !== 'assistant' || phase === 'ready') return m;
 
@@ -185,12 +185,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
                 thoughts[thoughts.length - 1] = {
                     ...last,
                     detail: detail || last.detail,
+                    text: thought || last.text,
                     timestamp: Date.now(),
                 };
             } else {
                 thoughts.push({
                     phase,
                     detail,
+                    text: thought,
                     timestamp: Date.now(),
                 });
             }
@@ -202,6 +204,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     appendPhaseThoughtDelta: (msgId, delta, fallbackPhase = 'responding') => set(s => ({
         messages: s.messages.map(m => {
             if (m.id !== msgId || m.role !== 'assistant' || !delta) return m;
+            if (fallbackPhase !== 'responding' && fallbackPhase !== 'summary') return m;
 
             const thoughts = [...(m.phaseThoughts || [])];
             if (thoughts.length === 0) {

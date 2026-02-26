@@ -1,4 +1,4 @@
-export type PhaseState = 'ready' | 'thinking' | 'planning' | 'installing' | 'executing' | 'verifying' | 'repairing' | 'building' | 'responding';
+export type PhaseState = 'ready' | 'thinking' | 'planning' | 'installing' | 'executing' | 'verifying' | 'repairing' | 'summary' | 'building' | 'responding';
 
 export interface Attachment {
     id: string;

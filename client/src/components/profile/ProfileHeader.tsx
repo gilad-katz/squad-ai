@@ -49,7 +49,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({ phase, onNewSessio
                 )}
                 <GitHeaderButton />
                 <SessionSwitcher />
-                <div className={phase === 'thinking' || phase === 'building' ? 'animate-pulse-soft' : ''}>
+                <div className={phase === 'thinking' || phase === 'building' || phase === 'summary' ? 'animate-pulse-soft' : ''}>
                     <PhaseBadge phase={phase} detail={phaseDetail ?? undefined} />
                 </div>
                 <div className="w-px h-6 bg-gray-200 mx-1" aria-hidden="true" />
@@ -63,4 +63,3 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({ phase, onNewSessio
         </header>
     );
 };
-

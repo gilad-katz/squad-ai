@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { ai } from '../../services/gemini';
 import { startDevServer, listFiles } from '../../services/fileService';
+import { buildPhaseThought } from '../thoughtProcess';
 import type { Phase, PhaseResult, PipelineContext } from '../../types/pipeline';
 
 export class DeliverPhase implements Phase {
@@ -44,7 +45,12 @@ export class DeliverPhase implements Phase {
             }
 
             // ── Generate Summary ─────────────────────────────────────────
-            ctx.events.emit({ type: 'phase', phase: 'responding' });
+            ctx.events.emit({
+                type: 'phase',
+                phase: 'summary',
+                detail: 'Preparing final summary',
+                thought: buildPhaseThought('summary', ctx)
+            });
             summaryText = await this.generateSummary(
                 ctx.completedFileActions,
                 ctx.completedGitActions,

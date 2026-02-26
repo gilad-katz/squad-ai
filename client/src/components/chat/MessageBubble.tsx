@@ -19,6 +19,8 @@ function phaseLabel(phase: string): string {
             return 'Verifying';
         case 'repairing':
             return 'Repairing';
+        case 'summary':
+            return 'Summary';
         case 'building':
             return 'Building';
         case 'responding':
@@ -42,6 +44,8 @@ function phaseDefaultThought(phase: string): string {
             return 'Checking build, lint, and runtime behavior.';
         case 'repairing':
             return 'Addressing issues found during verification.';
+        case 'summary':
+            return 'Preparing a concise summary with next technical steps.';
         case 'building':
             return 'Producing the requested output and artifacts.';
         case 'responding':

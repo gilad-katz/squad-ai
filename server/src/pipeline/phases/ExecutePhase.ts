@@ -18,6 +18,7 @@ import {
     type ImportPreflightResult
 } from '../../services/importPreflight';
 import { detectLanguage } from '../helpers';
+import { buildPhaseThought } from '../thoughtProcess';
 import type { Phase, PhaseResult, PipelineContext } from '../../types/pipeline';
 import type { ExecutionTask, TaskCreateFile, TaskEditFile, TaskGenerateImage } from '../../types/plan';
 import type { FileActionEvent, GitResultEvent } from '../../types/events';
@@ -69,7 +70,12 @@ export class ExecutePhase implements Phase {
         const plan = ctx.plan;
         if (!plan) return { status: 'abort', reason: 'No plan available for execution' };
 
-        ctx.events.emit({ type: 'phase', phase: 'executing' });
+        ctx.events.emit({
+            type: 'phase',
+            phase: 'executing',
+            detail: 'Executing planned tasks',
+            thought: buildPhaseThought('executing', ctx)
+        });
 
         // ── REQ-4.1: Read design tokens if available ─────────────────────
         let themeContent: string | null = null;

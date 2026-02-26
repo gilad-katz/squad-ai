@@ -1,6 +1,6 @@
 import React from 'react';
 import type { PhaseState } from '../../types';
-import { Clock, PlayCircle, Code2, MessageSquare, Package, ShieldCheck, Wrench } from 'lucide-react';
+import { Clock, PlayCircle, Code2, MessageSquare, Package, ShieldCheck, Wrench, FileText } from 'lucide-react';
 
 interface PhaseBadgeProps {
     phase: PhaseState;
@@ -16,6 +16,7 @@ export const PhaseBadge: React.FC<PhaseBadgeProps> = ({ phase, detail }) => {
         executing: { label: 'EXECUTING', color: 'bg-blue-100 text-blue-700 border-blue-200', Icon: Code2 },
         verifying: { label: 'VERIFYING', color: 'bg-cyan-100 text-cyan-700 border-cyan-200', Icon: ShieldCheck },
         repairing: { label: 'REPAIRING', color: 'bg-orange-100 text-orange-700 border-orange-200', Icon: Wrench },
+        summary: { label: 'SUMMARY', color: 'bg-teal-100 text-teal-700 border-teal-200', Icon: FileText },
         building: { label: 'BUILDING', color: 'bg-blue-100 text-blue-700 border-blue-200', Icon: Code2 },
         responding: { label: 'RESPONDING', color: 'bg-green-100 text-green-700 border-green-200', Icon: MessageSquare },
     };

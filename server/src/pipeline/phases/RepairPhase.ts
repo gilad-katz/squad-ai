@@ -18,6 +18,7 @@ import {
 } from '../../services/importPreflight';
 import { formatVerificationErrorsForPrompt, extractFilePathFromTscError, extractModulePathFromTscError, translateErrorToPlainLanguage } from '../../services/lintService';
 import { buildCrossFileContext, detectLanguage } from '../helpers';
+import { buildPhaseThought } from '../thoughtProcess';
 import type { Phase, PhaseResult, PipelineContext } from '../../types/pipeline';
 import type { FileActionEvent } from '../../types/events';
 
@@ -50,7 +51,12 @@ export class RepairPhase implements Phase {
             return { status: 'continue' };
         }
 
-        ctx.events.emit({ type: 'phase', phase: 'repairing' });
+        ctx.events.emit({
+            type: 'phase',
+            phase: 'repairing',
+            detail: 'Repairing verification issues',
+            thought: buildPhaseThought('repairing', ctx)
+        });
 
         const { lintResults, tscErrors, missingImportErrors } = ctx.verificationErrors!;
         const allTscErrors = [...tscErrors, ...missingImportErrors];

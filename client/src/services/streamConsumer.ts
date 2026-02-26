@@ -11,7 +11,7 @@ export interface StreamHandlers {
     onGitResult?: (index: number, output?: string, error?: string, action?: 'clone' | 'execute', command?: string) => void;
     onSessionId?: (id: string) => void;
     onFileAction?: (action: FileAction) => void;
-    onPhase?: (phase: PhaseState, detail?: string) => void;
+    onPhase?: (phase: PhaseState, detail?: string, thought?: string) => void;
     onTransparency?: (data: TransparencyData) => void;
     onPreview?: (url: string) => void;
     onMetadata?: (data: { title?: string }) => void;
@@ -25,6 +25,7 @@ export async function consumeStream(
     sessionId: string | null,
     handlers: StreamHandlers
 ): Promise<void> {
+    let sawDone = false;
     try {
         const response = await fetch('/api/chat', {
             method: 'POST',
@@ -61,6 +62,7 @@ export async function consumeStream(
                             handlers.onDelta(evt.text);
                             break;
                         case 'done':
+                            sawDone = true;
                             handlers.onDone(evt.usage, evt.sessionId);
                             break;
                         case 'error':
@@ -76,7 +78,7 @@ export async function consumeStream(
                             handlers.onSessionId?.(evt.sessionId);
                             break;
                         case 'phase':
-                            handlers.onPhase?.(evt.phase, evt.detail);
+                            handlers.onPhase?.(evt.phase, evt.detail, evt.thought);
                             break;
                         case 'transparency':
                             handlers.onTransparency?.(evt.data);
@@ -98,6 +100,13 @@ export async function consumeStream(
                     console.warn('Failed to parse SSE line:', line);
                 }
             }
+        }
+
+        // Defensive fallback: if the stream closes unexpectedly without a done
+        // event, reset client state through the error path instead of leaving
+        // the UI in a perpetual streaming phase.
+        if (!sawDone) {
+            handlers.onError('Stream ended before completion. Please retry.');
         }
     } catch (err: any) {
         handlers.onError(err.message || 'Stream connection failed');

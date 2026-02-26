@@ -90,7 +90,7 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
 
     const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
     const isAssistantStarting = lastMsg?.role === 'assistant' && !lastMsg.displayContent && !lastMsg.transparency;
-    const showThinkingIndicator = phase === 'thinking' || phase === 'planning' || phase === 'executing' || (phase === 'responding' && isAssistantStarting);
+    const showThinkingIndicator = phase === 'thinking' || phase === 'planning' || phase === 'executing' || phase === 'summary' || (phase === 'responding' && isAssistantStarting);
 
     const mainSpacing = paneMode ? 'pt-6 pb-6' : 'pt-24 pb-32';
     const widthClass = paneMode ? 'max-w-[980px]' : 'max-w-4xl';
