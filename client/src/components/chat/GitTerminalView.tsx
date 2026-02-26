@@ -7,7 +7,7 @@ interface GitTerminalViewProps {
     isStreaming?: boolean;
 }
 
-export const GitTerminalView: React.FC<GitTerminalViewProps> = ({ actions, isStreaming }) => {
+export const GitTerminalView = React.memo(function GitTerminalView({ actions, isStreaming }: GitTerminalViewProps) {
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [copied, setCopied] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -20,20 +20,21 @@ export const GitTerminalView: React.FC<GitTerminalViewProps> = ({ actions, isStr
     }, [actions, isCollapsed]);
 
     const handleCopy = async () => {
-        const fullLogs = actions.map(a => {
-            const cmd = a.action === 'clone' ? 'git clone ...' : (a.command || 'git');
-            const output = a.output || a.error || '';
-            return `$ ${cmd}\n${output}`;
-        }).join('\n\n');
+        const fullLogs = actions
+            .filter(Boolean)
+            .map(a => {
+                const cmd = a?.action === 'clone' ? 'git clone ...' : (a?.command || 'git');
+                const output = a?.output || a?.error || '';
+                return `$ ${cmd}\n${output}`;
+            }).join('\n\n');
 
         await navigator.clipboard.writeText(fullLogs);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };
 
-    if (actions.length === 0) return null;
-
-    const hasError = actions.some(a => a.error);
+    if (!actions || actions.length === 0) return null;
+    const hasError = actions.some(a => a && a.error);
 
     return (
         <div className="flex flex-col w-full bg-[#1a1b1e] rounded-xl border border-gray-700/50 shadow-lg overflow-hidden my-2">
@@ -87,28 +88,28 @@ export const GitTerminalView: React.FC<GitTerminalViewProps> = ({ actions, isStr
                     ref={scrollRef}
                     className="p-4 max-h-[400px] overflow-y-auto font-mono text-[13px] leading-relaxed bg-[#1a1b1e]"
                 >
-                    {actions.map((action, idx) => (
-                        <div key={action.id || idx} className="mb-4 last:mb-0">
+                    {actions.filter(Boolean).map((action, idx) => (
+                        <div key={action?.id || idx} className="mb-4 last:mb-0">
                             <div className="flex items-start gap-2 text-gray-300">
                                 <span className="text-emerald-500 flex-shrink-0 select-none">squad-ai:~/workspace$</span>
                                 <span className="text-blue-300 break-all">
-                                    {action.action === 'clone' ? 'git clone ...' : (action.command || 'git')}
+                                    {action?.action === 'clone' ? 'git clone ...' : (action?.command || 'git')}
                                 </span>
                             </div>
 
-                            {action.output && (
+                            {action?.output && (
                                 <div className="mt-1.5 text-gray-400 whitespace-pre-wrap pl-2 border-l border-gray-700/30">
                                     {action.output}
                                 </div>
                             )}
 
-                            {action.error && (
+                            {action?.error && (
                                 <div className="mt-1.5 text-red-400 whitespace-pre-wrap pl-2 border-l border-red-500/30">
                                     {action.error}
                                 </div>
                             )}
 
-                            {!action.output && !action.error && isStreaming && idx === actions.length - 1 && (
+                            {!action?.output && !action?.error && isStreaming && idx === actions.length - 1 && (
                                 <div className="mt-1.5 text-gray-500 italic pl-2 border-l border-gray-700/30 animate-pulse">
                                     Executing...
                                 </div>
@@ -125,4 +126,4 @@ export const GitTerminalView: React.FC<GitTerminalViewProps> = ({ actions, isStr
             )}
         </div>
     );
-};
+});

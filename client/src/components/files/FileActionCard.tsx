@@ -6,6 +6,7 @@ import { useSessionStore } from '../../store/session';
 
 interface FileActionCardProps {
     action: FileAction;
+    sessionId?: string;
 }
 
 const actionConfig = {
@@ -19,9 +20,10 @@ const langIcons: Record<string, string> = {
     css: 'CSS', html: 'HTML', json: 'JSON', python: 'PY', markdown: 'MD',
 };
 
-export const FileActionCard: React.FC<FileActionCardProps> = ({ action }) => {
+export const FileActionCard = React.memo(function FileActionCard({ action, sessionId: overrideSessionId }: FileActionCardProps) {
     const [showModal, setShowModal] = useState(false);
-    const sessionId = useSessionStore(s => s.sessionId);
+    const globalSessionId = useSessionStore(s => s.sessionId);
+    const sessionId = overrideSessionId || globalSessionId;
     const config = actionConfig[action.action];
     const ActionIcon = config.icon;
     const langBadge = langIcons[action.language] || action.language?.toUpperCase()?.slice(0, 3) || 'TXT';
@@ -115,4 +117,4 @@ export const FileActionCard: React.FC<FileActionCardProps> = ({ action }) => {
             )}
         </>
     );
-};
+});

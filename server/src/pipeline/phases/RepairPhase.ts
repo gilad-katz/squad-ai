@@ -15,7 +15,7 @@ import { buildCrossFileContext, detectLanguage } from '../helpers';
 import type { Phase, PhaseResult, PipelineContext } from '../../types/pipeline';
 import type { FileActionEvent } from '../../types/events';
 
-const MAX_REPAIR_RETRIES = 3;
+const MAX_REPAIR_RETRIES = 6;
 
 export class RepairPhase implements Phase {
     name = 'repair';

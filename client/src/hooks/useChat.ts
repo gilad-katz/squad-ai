@@ -30,6 +30,14 @@ export function useChat() {
 
         if (!content || !content.trim()) return;
 
+        // Generate sessionId client-side if this is the first message,
+        // so that new messages get tagged with it.
+        let sessionId = useSessionStore.getState().sessionId;
+        if (!sessionId) {
+            sessionId = `session-${Date.now()}`;
+            useSessionStore.getState().setSessionId(sessionId);
+        }
+
         // Only append new user message if this isn't a retry
         if (!retryMsgId) {
             store.appendUserMessage(content, attachments);
@@ -78,13 +86,7 @@ export function useChat() {
 
         const agentMsgId = useSessionStore.getState().appendAgentMessageStart();
 
-        // Generate sessionId client-side if this is the first message,
-        // and set it immediately so duplicate requests share the same ID.
-        let sessionId = useSessionStore.getState().sessionId;
-        if (!sessionId) {
-            sessionId = `session-${Date.now()}`;
-            useSessionStore.getState().setSessionId(sessionId);
-        }
+        // sessionID is already generated above
 
         await consumeStream(
             apiMessages,

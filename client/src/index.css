@@ -9,7 +9,7 @@
   font-weight: 400;
 
   color-scheme: light dark;
-  
+
   /* Premium Design Tokens */
   --brand-primary: #2563eb;
   --brand-secondary: #4f46e5;
@@ -19,13 +19,13 @@
   --text-main: #0f172a;
   --text-muted: #64748b;
   --border-subtle: #e2e8f0;
-  
+
   /* UI Elements */
   --radius-sm: 0.5rem;
   --radius-md: 0.75rem;
   --radius-lg: 1rem;
   --radius-xl: 1.5rem;
-  
+
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
@@ -60,38 +60,89 @@ body {
 
 /* Modal and Element animations */
 @keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes slide-up {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes scale-in {
-  from { opacity: 0; transform: scale(0.96); }
-  to { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 @keyframes pulse-soft {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.8; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.8;
+  }
 }
 
-.animate-fade-in { animation: fade-in 0.25s ease-out; }
-.animate-slide-up { animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-.animate-scale-in { animation: scale-in 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-.animate-pulse-soft { animation: pulse-soft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+.animate-fade-in {
+  animation: fade-in 0.25s ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
 
 /* Staggered children animation */
-.stagger-load > * {
+.stagger-load>* {
   opacity: 0;
   animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-.stagger-load > *:nth-child(1) { animation-delay: 0.1s; }
-.stagger-load > *:nth-child(2) { animation-delay: 0.18s; }
-.stagger-load > *:nth-child(3) { animation-delay: 0.26s; }
-.stagger-load > *:nth-child(4) { animation-delay: 0.34s; }
-.stagger-load > *:nth-child(5) { animation-delay: 0.42s; }
+.stagger-load>*:nth-child(1) {
+  animation-delay: 0.1s;
+}
+
+.stagger-load>*:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.stagger-load>*:nth-child(3) {
+  animation-delay: 0.26s;
+}
+
+.stagger-load>*:nth-child(4) {
+  animation-delay: 0.34s;
+}
+
+.stagger-load>*:nth-child(5) {
+  animation-delay: 0.42s;
+}

@@ -10,7 +10,7 @@ interface MessageBubbleProps {
     onRetry?: (id: string) => void;
 }
 
-export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }) => {
+export const MessageBubble = React.memo(function MessageBubble({ message, onRetry }: MessageBubbleProps) {
     const isUser = message.role === 'user';
 
     if (isUser) {
@@ -68,7 +68,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
                 {hasFileActions && (
                     <div className={`px-4 py-3 space-y-2 border-t border-gray-50 bg-gray-50/30`}>
                         {mergedFileActions.map((fa) => (
-                            <FileActionCard key={fa.id} action={fa} />
+                            <FileActionCard key={fa.id} action={fa} sessionId={message.sessionId} />
                         ))}
                     </div>
                 )}
@@ -110,5 +110,5 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
             </div>
         </div>
     );
-};
+});
 

@@ -55,6 +55,7 @@ export interface Message {
     gitActions: GitAction[];
     summary?: string;
     status: 'complete' | 'streaming' | 'error';
+    sessionId?: string;
     timestamp: number;
 }
 

@@ -109,11 +109,13 @@ export const SessionSwitcher: React.FC = () => {
                             </div>
                         ) : (
                             sessions.map((session) => (
-                                <button
+                                <div
                                     key={session.id}
                                     onClick={() => handleSwitch(session.id)}
-                                    className={`w-full text-left px-4 py-3 hover:bg-gray-50 flex flex-col gap-1 transition-colors ${session.id === currentSessionId ? 'bg-blue-50/50' : ''
+                                    className={`w-full text-left px-4 py-3 hover:bg-gray-50 flex flex-col gap-1 transition-colors cursor-pointer ${session.id === currentSessionId ? 'bg-blue-50/50' : ''
                                         }`}
+                                    role="button"
+                                    tabIndex={0}
                                 >
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
@@ -147,7 +149,7 @@ export const SessionSwitcher: React.FC = () => {
                                         <Clock className="w-3 h-3" />
                                         <span className="truncate">{session.id}</span>
                                     </div>
-                                </button>
+                                </div>
                             ))
                         )}
                     </div>

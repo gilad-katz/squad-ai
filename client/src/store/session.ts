@@ -71,7 +71,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             id: crypto.randomUUID(), role: 'user', content,
             displayContent: content, attachments,
             transparency: null, fileActions: [], serverFileActions: [], gitActions: [],
-            status: 'complete', timestamp: Date.now()
+            status: 'complete', timestamp: Date.now(), sessionId: s.sessionId || undefined
         }]
     })),
 
@@ -81,7 +81,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             streamActive: true,
             messages: [...s.messages, {
                 id, role: 'assistant', content: '', displayContent: '',
-                transparency: null, fileActions: [], serverFileActions: [], gitActions: [], status: 'streaming', timestamp: Date.now()
+                transparency: null, fileActions: [], serverFileActions: [], gitActions: [], status: 'streaming', timestamp: Date.now(), sessionId: s.sessionId || undefined
             }]
         }));
         return id;
@@ -263,6 +263,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
                     serverFileActions: m.serverFileActions || [],
                     gitActions: m.gitActions || [],
                     status: (m.status || 'complete') as Message['status'],
+                    sessionId: m.sessionId || sessionId
                 }));
                 set({ messages: normalised, restoringSession: false });
             } else {

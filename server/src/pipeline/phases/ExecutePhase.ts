@@ -285,11 +285,11 @@ export class ExecutePhase implements Phase {
                         }
 
                         const response = await ai.models.generateContent({
-                            model: 'gemini-2.5-flash-image',
+                            model: process.env.IMAGE_MODEL_ID || 'gemini-3-pro-image-preview',
                             contents: finalPrompt
                         });
 
-                        const candidate = response.candidates?.[0];
+                        const candidate = (response as any).candidates?.[0];
                         let imageBuffer: Buffer | null = null;
                         if (candidate?.content?.parts) {
                             for (const part of candidate.content.parts) {
@@ -303,7 +303,13 @@ export class ExecutePhase implements Phase {
                         if (!imageBuffer) throw new Error('No image data in response');
 
                         const fullPath = path.join(ctx.workspaceDir, task.filepath);
-                        fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+
+                        // Ensure parent directory exists (e.g. public/images)
+                        const parentDir = path.dirname(fullPath);
+                        if (!fs.existsSync(parentDir)) {
+                            fs.mkdirSync(parentDir, { recursive: true });
+                        }
+
                         fs.writeFileSync(fullPath, imageBuffer);
 
                         const imgResult: FileActionEvent = {

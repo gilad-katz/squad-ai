@@ -152,8 +152,8 @@ export const ChatThread: React.FC<ChatThreadProps> = ({ onRetry }) => {
                     </div>
                 ) : (
                     <div ref={containerRef} className="w-full flex flex-col stagger-load" aria-live="polite" aria-atomic="false">
-                        {messages.map((msg) => (
-                            <MessageBubble key={msg.id} message={msg} onRetry={onRetry} />
+                        {messages.map((msg, idx) => (
+                            <MessageBubble key={msg.id || `msg-${idx}`} message={msg} onRetry={onRetry} />
                         ))}
                         {showThinkingIndicator && (
                             <div className="flex justify-start w-full mb-12 animate-fade-in">

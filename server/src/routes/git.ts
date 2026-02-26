@@ -23,7 +23,7 @@ router.get('/:workspaceId', (req: Request, res: Response) => {
     try {
         const config = getWorkspaceConfig(param(req, 'workspaceId'));
         if (!config) {
-            res.status(404).json({ error: 'No repo connected to this workspace' });
+            res.json(null);
             return;
         }
         const { githubToken: _, ...safeConfig } = config;
