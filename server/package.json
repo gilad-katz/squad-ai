@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only --ignore-watch workspace src/index.ts",
+    "dev": "mkdir -p logs && ts-node-dev --respawn --transpile-only --ignore-watch workspace src/index.ts 2>&1 | tee -a logs/server.log",
     "test": "vitest run"
   },
   "keywords": [],

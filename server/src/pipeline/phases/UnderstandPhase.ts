@@ -29,7 +29,8 @@ const INTENT_PATTERNS: Array<{ intent: UserIntent; patterns: RegExp[] }> = [
         intent: 'fix',
         patterns: [
             /\bfix\b/i, /\bbug\b/i, /\bbroken\b/i, /\berror\b/i, /\bcrash/i,
-            /\bdoesn'?t\s+work/i, /\bnot\s+working/i, /\bissue\b/i
+            /\bdoesn'?t\s+work/i, /\bnot\s+working/i, /\bissue\b/i,
+            /\bduplicate\b/i, /\boverlap(?:ping)?\b/i, /\bshow(?:s|ing)?\b.*\bduplicate\b/i
         ]
     },
     {
@@ -37,7 +38,7 @@ const INTENT_PATTERNS: Array<{ intent: UserIntent; patterns: RegExp[] }> = [
         patterns: [
             /\bchange\b/i, /\bupdate\b/i, /\bmodify\b/i, /\breplace\b/i,
             /\badd\b.*\bto\b/i, /\bremove\b.*\bfrom\b/i, /\bmove\b/i,
-            /\bmake\s+it\b/i, /\bshould\s+be\b/i
+            /\bmake\s+it\b/i, /\bshould\s+be\b/i, /^\s*add\b/i, /\bimplement\b/i
         ]
     },
     {
@@ -52,7 +53,8 @@ const INTENT_PATTERNS: Array<{ intent: UserIntent; patterns: RegExp[] }> = [
         intent: 'explain',
         patterns: [
             /\bexplain\b/i, /\bwhat\s+is\b/i, /\bhow\s+does\b/i, /\bwhy\b/i,
-            /\btell\s+me\b/i, /\bwhat\s+do\s+you\s+think\b/i, /\bdescribe\b/i
+            /\btell\s+me\b/i, /\bwhat\s+do\s+you\s+think\b/i, /\bdescribe\b/i,
+            /\bsuggest\b/i, /\brecommend\b/i, /\bideas?\b/i, /\bnew\s+functionality\b/i
         ]
     },
     {
@@ -86,6 +88,11 @@ const INTENT_PATTERNS: Array<{ intent: UserIntent; patterns: RegExp[] }> = [
 ];
 
 export function classifyIntent(lastUserMessage: string): UserIntent {
+    // Strong conversational signal: user wants ideas/recommendations.
+    if (/\b(suggest|recommend|ideas?|new\s+functionality|what\s+should\s+i\s+add)\b/i.test(lastUserMessage)) {
+        return 'explain';
+    }
+
     // Count matches per intent
     const scores = new Map<UserIntent, number>();
 
@@ -170,15 +177,11 @@ export class UnderstandPhase implements Phase {
 
         // 7. REQ-1.2: Proactive Clarification — if request is ambiguous, abort
         //    and emit clarifying questions as a chat response
-        if (intent === 'unknown' && lastUserMsg.content.split(/\s+/).length < 6) {
+        if (intent === 'unknown' && lastUserMsg.content.split(/\s+/).length < 3) {
             // Very short, ambiguous request — ask for clarification
             ctx.events.emit({
                 type: 'delta',
-                text: "I'd love to help! Could you give me a bit more detail about what you'd like? For example:\n\n" +
-                    "- **Build**: \"Create a portfolio website with a hero, projects grid, and contact form\"\n" +
-                    "- **Edit**: \"Change the header background to dark blue\"\n" +
-                    "- **Fix**: \"The button doesn't respond when clicked\"\n\n" +
-                    "The more specific you are, the better I can plan! 🚀"
+                text: 'Could you share a bit more detail on what you want changed? A short sentence is enough.'
             });
             ctx.events.emit({ type: 'phase', phase: 'ready' });
             ctx.events.emit({ type: 'done', usage: null, sessionId: ctx.sessionId });

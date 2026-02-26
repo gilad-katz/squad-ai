@@ -16,34 +16,44 @@ export class DeliverPhase implements Phase {
         const plan = ctx.plan;
         if (!plan) return { status: 'abort', reason: 'No plan available for delivery' };
 
-        // ── Start Dev Server ─────────────────────────────────────────────
-        const devResult = await startDevServer(ctx.sessionId);
-        if (devResult) {
-            ctx.events.emit({ type: 'preview', url: `http://localhost:${devResult.port}` });
-
-            const gitResult = {
-                type: 'git_result' as const,
-                id: `dev-${Date.now()}`,
-                index: ctx.completedGitActions.length,
-                output: devResult.logs,
-                command: devResult.command,
-                action: 'execute'
-            };
-            ctx.completedGitActions.push(gitResult);
-            ctx.events.emit(gitResult);
-        }
-
-        // ── Generate Summary ─────────────────────────────────────────────
-        ctx.events.emit({ type: 'phase', phase: 'responding' });
-
-        const summaryText = await this.generateSummary(
-            ctx.completedFileActions,
-            ctx.completedGitActions,
-            ctx
+        const hasCodeMutations = plan.tasks.some(t =>
+            t.type === 'create_file' ||
+            t.type === 'edit_file' ||
+            t.type === 'delete_file' ||
+            t.type === 'generate_image'
         );
 
-        if (summaryText) {
-            ctx.events.emit({ type: 'summary', text: summaryText });
+        // Conversational-only turns should not run preview/summary boilerplate.
+        let summaryText = '';
+        if (hasCodeMutations) {
+            // ── Start Dev Server ─────────────────────────────────────────
+            const devResult = await startDevServer(ctx.sessionId);
+            if (devResult) {
+                ctx.events.emit({ type: 'preview', url: `http://localhost:${devResult.port}` });
+
+                const gitResult = {
+                    type: 'git_result' as const,
+                    id: `dev-${Date.now()}`,
+                    index: ctx.completedGitActions.length,
+                    output: devResult.logs,
+                    command: devResult.command,
+                    action: 'execute'
+                };
+                ctx.completedGitActions.push(gitResult);
+                ctx.events.emit(gitResult);
+            }
+
+            // ── Generate Summary ─────────────────────────────────────────
+            ctx.events.emit({ type: 'phase', phase: 'responding' });
+            summaryText = await this.generateSummary(
+                ctx.completedFileActions,
+                ctx.completedGitActions,
+                ctx
+            );
+
+            if (summaryText) {
+                ctx.events.emit({ type: 'summary', text: summaryText });
+            }
         }
 
         // ── Persist Final History ────────────────────────────────────────
@@ -57,7 +67,7 @@ export class DeliverPhase implements Phase {
             role: 'assistant',
             content: assistantContent,
             displayContent: assistantContent,
-            summary: summaryText,
+            summary: summaryText || undefined,
             status: 'complete',
             timestamp: Date.now(),
             transparency: {

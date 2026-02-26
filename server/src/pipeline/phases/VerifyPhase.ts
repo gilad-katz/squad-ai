@@ -12,6 +12,20 @@ export class VerifyPhase implements Phase {
     name = 'verify';
 
     async execute(ctx: PipelineContext): Promise<PhaseResult> {
+        const plan = ctx.plan;
+        const hasCodeMutations = !!plan?.tasks?.some(t =>
+            t.type === 'create_file' ||
+            t.type === 'edit_file' ||
+            t.type === 'delete_file' ||
+            t.type === 'generate_image'
+        );
+
+        // Skip verification for conversational-only turns (e.g. suggestions).
+        if (!hasCodeMutations) {
+            ctx.verificationErrors = null;
+            return { status: 'skip' };
+        }
+
         ctx.events.emit({ type: 'phase', phase: 'verifying' });
 
         // Emit lint/tsc terminal actions for the UI

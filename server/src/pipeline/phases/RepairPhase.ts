@@ -10,12 +10,24 @@ import fs from 'fs';
 import path from 'path';
 import { readFile, writeFile, listFiles, generateDiff } from '../../services/fileService';
 import { executeFileAction, runWithConcurrency } from '../../services/executor';
+import {
+    buildImportPreflightFeedback,
+    loadInstalledPackages,
+    validateGeneratedImports,
+    type ImportPreflightResult
+} from '../../services/importPreflight';
 import { formatVerificationErrorsForPrompt, extractFilePathFromTscError, extractModulePathFromTscError, translateErrorToPlainLanguage } from '../../services/lintService';
 import { buildCrossFileContext, detectLanguage } from '../helpers';
 import type { Phase, PhaseResult, PipelineContext } from '../../types/pipeline';
 import type { FileActionEvent } from '../../types/events';
 
 const MAX_REPAIR_RETRIES = 6;
+const MAX_IMPORT_REPAIR_REGEN_ATTEMPTS = 2;
+const REPAIR_PHASE_CONCURRENCY = 3;
+
+function normalizeRelPath(relPath: string): string {
+    return path.normalize(relPath).replace(/\\/g, '/');
+}
 
 export class RepairPhase implements Phase {
     name = 'repair';
@@ -140,6 +152,11 @@ export class RepairPhase implements Phase {
         (ctx as any)._fileCheckpoint = checkpoint;
 
         const verificationReport = formatVerificationErrorsForPrompt(lintResults, allTscErrors, ctx.workspaceDir);
+        const filesToFixNormalized = Array.from(filesToFix).map(normalizeRelPath);
+        const existingWorkspaceFiles = listFiles(ctx.sessionId).map(normalizeRelPath);
+        const fileManifest = Array.from(new Set([...existingWorkspaceFiles, ...filesToFixNormalized]));
+        const plannedPathSet = new Set(filesToFixNormalized);
+        const installedPackages = loadInstalledPackages(ctx.workspaceDir);
 
         // Helper to repair a single file
         const repairFile = async (relPath: string): Promise<void> => {
@@ -152,14 +169,15 @@ export class RepairPhase implements Phase {
                 existingContent = readFile(ctx.sessionId, relPath);
             } catch { /* file doesn't exist */ }
 
-            const code = await executeFileAction(
-                ctx.geminiContents,
-                ctx.sessionId,
+            const code = await this.generateRepairWithImportPreflight({
+                ctx,
                 relPath,
-                `VERIFICATION FAILED for the following reasons:\n\n${verificationReport}${crossFileContext}\n\n${this.buildRepairStrategy(verificationReport, relPath)}\n6. Output ONLY the fixed RAW SOURCE CODE for ${relPath}.`,
-                listFiles(ctx.sessionId),
-                existingContent
-            );
+                prompt: `VERIFICATION FAILED for the following reasons:\n\n${verificationReport}${crossFileContext}\n\n${this.buildRepairStrategy(verificationReport, relPath)}\n6. Output ONLY the fixed RAW SOURCE CODE for ${relPath}.`,
+                existingContent,
+                fileManifest,
+                installedPackages,
+                plannedPathSet,
+            });
 
             const oldContent = writeFile(ctx.sessionId, relPath, code);
             const diff = generateDiff(oldContent || '', code, relPath);
@@ -192,13 +210,13 @@ export class RepairPhase implements Phase {
         if (sourceFiles.length > 0) {
             this.emitRepairProgress(ctx, `📦 Phase 1: Fixing ${sourceFiles.length} dependency module(s) first...`);
             const sourceRepairTasks = sourceFiles.map(relPath => () => repairFile(relPath));
-            await runWithConcurrency(sourceRepairTasks, 5);
+            await runWithConcurrency(sourceRepairTasks, REPAIR_PHASE_CONCURRENCY);
         }
 
         if (consumerFiles.length > 0) {
             this.emitRepairProgress(ctx, `🔗 Phase 2: Fixing ${consumerFiles.length} consumer file(s)...`);
             const consumerRepairTasks = consumerFiles.map(relPath => () => repairFile(relPath));
-            await runWithConcurrency(consumerRepairTasks, 5);
+            await runWithConcurrency(consumerRepairTasks, REPAIR_PHASE_CONCURRENCY);
         }
 
         // Loop back to verify to check if repair worked
@@ -208,6 +226,64 @@ export class RepairPhase implements Phase {
     // ── REQ-6.4: Repair Progress Communication ──────────────────────────
     private emitRepairProgress(ctx: PipelineContext, message: string): void {
         ctx.events.emit({ type: 'delta', text: `\n${message}\n` });
+    }
+
+    private async generateRepairWithImportPreflight(params: {
+        ctx: PipelineContext;
+        relPath: string;
+        prompt: string;
+        existingContent: string | null;
+        fileManifest: string[];
+        installedPackages: Set<string>;
+        plannedPathSet: Set<string>;
+    }): Promise<string> {
+        const {
+            ctx,
+            relPath,
+            prompt,
+            existingContent,
+            fileManifest,
+            installedPackages,
+            plannedPathSet,
+        } = params;
+
+        let runPrompt = prompt;
+        let code = '';
+        let validation: ImportPreflightResult = { ok: true, missingPackages: [], missingRelativeImports: [] };
+
+        for (let attempt = 0; attempt <= MAX_IMPORT_REPAIR_REGEN_ATTEMPTS; attempt++) {
+            code = await executeFileAction(
+                ctx.geminiContents,
+                ctx.sessionId,
+                relPath,
+                runPrompt,
+                fileManifest,
+                existingContent
+            );
+
+            validation = validateGeneratedImports({
+                workspaceDir: ctx.workspaceDir,
+                sourceFilepath: normalizeRelPath(relPath),
+                code,
+                installedPackages,
+                plannedPaths: plannedPathSet,
+            });
+
+            if (validation.ok) {
+                return code;
+            }
+
+            if (attempt < MAX_IMPORT_REPAIR_REGEN_ATTEMPTS) {
+                const feedback = buildImportPreflightFeedback(validation);
+                this.emitRepairProgress(
+                    ctx,
+                    `⚠️ Import preflight failed for ${relPath}. Regenerating (${attempt + 1}/${MAX_IMPORT_REPAIR_REGEN_ATTEMPTS})...`
+                );
+                runPrompt = `${prompt}\n\n${feedback}`;
+            }
+        }
+
+        throw new Error(buildImportPreflightFeedback(validation));
     }
 
     // ── REQ-6.3: Smart Repair Strategy Builder ──────────────────────────
