@@ -55,6 +55,7 @@ router.post('/', validateChat, async (req, res) => {
             existingFiles: [],
             completedFileActions: [],
             completedGitActions: [],
+            phaseThoughts: [],
             verificationErrors: null,
             phaseStartTime: Date.now(),
             pipelineStartTime: Date.now(),

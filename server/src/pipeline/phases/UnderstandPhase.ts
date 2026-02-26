@@ -7,6 +7,7 @@
 
 import { ai } from '../../services/gemini';
 import { listFiles, readFile } from '../../services/fileService';
+import { emitPhase } from '../phaseEvents';
 import type { Phase, PhaseResult, PipelineContext } from '../../types/pipeline';
 
 // ─── Intent Types ────────────────────────────────────────────────────────────
@@ -124,7 +125,7 @@ export class UnderstandPhase implements Phase {
     name = 'understand';
 
     async execute(ctx: PipelineContext): Promise<PhaseResult> {
-        ctx.events.emit({ type: 'phase', phase: 'thinking' });
+        emitPhase(ctx, 'thinking');
 
         // 1. Extract the last user message for intent classification
         const lastUserMsg = [...ctx.messages].reverse().find(m => m.role === 'user');
@@ -183,7 +184,7 @@ export class UnderstandPhase implements Phase {
                 type: 'delta',
                 text: 'Could you share a bit more detail on what you want changed? A short sentence is enough.'
             });
-            ctx.events.emit({ type: 'phase', phase: 'ready' });
+            emitPhase(ctx, 'ready');
             ctx.events.emit({ type: 'done', usage: null, sessionId: ctx.sessionId });
             return { status: 'abort', reason: 'Clarification requested from user' };
         }

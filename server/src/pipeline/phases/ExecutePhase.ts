@@ -17,6 +17,7 @@ import {
     validateGeneratedImports,
     type ImportPreflightResult
 } from '../../services/importPreflight';
+import { emitPhase } from '../phaseEvents';
 import { detectLanguage } from '../helpers';
 import { buildPhaseThought } from '../thoughtProcess';
 import type { Phase, PhaseResult, PipelineContext } from '../../types/pipeline';
@@ -70,12 +71,7 @@ export class ExecutePhase implements Phase {
         const plan = ctx.plan;
         if (!plan) return { status: 'abort', reason: 'No plan available for execution' };
 
-        ctx.events.emit({
-            type: 'phase',
-            phase: 'executing',
-            detail: 'Executing planned tasks',
-            thought: buildPhaseThought('executing', ctx)
-        });
+        emitPhase(ctx, 'executing', 'Executing planned tasks', buildPhaseThought('executing', ctx));
 
         // ── REQ-4.1: Read design tokens if available ─────────────────────
         let themeContent: string | null = null;
@@ -200,11 +196,11 @@ export class ExecutePhase implements Phase {
 
         for (let batchIndex = 0; batchIndex < fileBatches.length; batchIndex++) {
             const batch = fileBatches[batchIndex];
-            ctx.events.emit({
-                type: 'phase',
-                phase: 'executing',
-                detail: `Executing batch ${batchIndex + 1}/${fileBatches.length} (${batch.length} task${batch.length === 1 ? '' : 's'})`
-            });
+            emitPhase(
+                ctx,
+                'executing',
+                `Executing batch ${batchIndex + 1}/${fileBatches.length} (${batch.length} task${batch.length === 1 ? '' : 's'})`
+            );
 
             const batchFactories = batch.map(meta => async () => {
                 const { task, index, taskId } = meta;
@@ -214,11 +210,7 @@ export class ExecutePhase implements Phase {
                         updateTaskStatus(index, 'in_progress');
                         completedFileTasks++;
                         const fileName = task.filepath.split('/').pop() || task.filepath;
-                        ctx.events.emit({
-                            type: 'phase',
-                            phase: 'executing',
-                            detail: `Building ${fileName} (${completedFileTasks} of ${totalFileTasks})`
-                        });
+                        emitPhase(ctx, 'executing', `Building ${fileName} (${completedFileTasks} of ${totalFileTasks})`);
 
                         try {
                             let existingContent: string | null = null;
@@ -300,11 +292,7 @@ export class ExecutePhase implements Phase {
                     updateTaskStatus(index, 'in_progress');
                     completedFileTasks++;
                     const fileName = task.filepath.split('/').pop() || task.filepath;
-                    ctx.events.emit({
-                        type: 'phase',
-                        phase: 'executing',
-                        detail: `Building ${fileName} (${completedFileTasks} of ${totalFileTasks})`
-                    });
+                    emitPhase(ctx, 'executing', `Building ${fileName} (${completedFileTasks} of ${totalFileTasks})`);
 
                     try {
                         let finalPrompt = task.prompt;

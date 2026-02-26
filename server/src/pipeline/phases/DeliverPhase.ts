@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { ai } from '../../services/gemini';
 import { startDevServer, listFiles } from '../../services/fileService';
+import { emitPhase } from '../phaseEvents';
 import { buildPhaseThought } from '../thoughtProcess';
 import type { Phase, PhaseResult, PipelineContext } from '../../types/pipeline';
 
@@ -45,12 +46,7 @@ export class DeliverPhase implements Phase {
             }
 
             // ── Generate Summary ─────────────────────────────────────────
-            ctx.events.emit({
-                type: 'phase',
-                phase: 'summary',
-                detail: 'Preparing final summary',
-                thought: buildPhaseThought('summary', ctx)
-            });
+            emitPhase(ctx, 'summary', 'Preparing final summary', buildPhaseThought('summary', ctx));
             summaryText = await this.generateSummary(
                 ctx.completedFileActions,
                 ctx.completedGitActions,
@@ -83,7 +79,8 @@ export class DeliverPhase implements Phase {
             },
             fileActions: [],
             serverFileActions: ctx.completedFileActions,
-            gitActions: ctx.completedGitActions
+            gitActions: ctx.completedGitActions,
+            phaseThoughts: ctx.phaseThoughts
         };
 
         try {
@@ -98,7 +95,7 @@ export class DeliverPhase implements Phase {
         this.updateProjectMemory(ctx);
 
         // ── Finalize ─────────────────────────────────────────────────────
-        ctx.events.emit({ type: 'phase', phase: 'ready' });
+        emitPhase(ctx, 'ready');
         ctx.events.emit({ type: 'done', usage: null, sessionId: ctx.sessionId });
 
         return { status: 'continue' };

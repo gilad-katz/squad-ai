@@ -6,6 +6,7 @@
 
 import { lintWorkspace, typeCheckWorkspace, checkMissingImports, translateErrorToPlainLanguage } from '../../services/lintService';
 import { checkDesignConsistency } from '../../services/designConsistencyChecker';
+import { emitPhase } from '../phaseEvents';
 import { buildPhaseThought } from '../thoughtProcess';
 import type { Phase, PhaseResult, PipelineContext } from '../../types/pipeline';
 
@@ -27,12 +28,7 @@ export class VerifyPhase implements Phase {
             return { status: 'skip' };
         }
 
-        ctx.events.emit({
-            type: 'phase',
-            phase: 'verifying',
-            detail: 'Running validation checks',
-            thought: buildPhaseThought('verifying', ctx)
-        });
+        emitPhase(ctx, 'verifying', 'Running validation checks', buildPhaseThought('verifying', ctx));
 
         // Emit lint/tsc terminal actions for the UI
         const lintIndex = ctx.completedGitActions.length;

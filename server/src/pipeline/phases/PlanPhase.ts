@@ -7,6 +7,7 @@ import path from 'path';
 import { ai } from '../../services/gemini';
 import { listFiles, readFile, ensureViteTypes, installDependencies } from '../../services/fileService';
 import { loadPrompt, convertToGeminiContents, robustJsonParse, classifyError, detectLanguage } from '../helpers';
+import { emitPhase } from '../phaseEvents';
 import { buildPhaseThought } from '../thoughtProcess';
 import type { Phase, PhaseResult, PipelineContext } from '../../types/pipeline';
 import type { ExecutionPlan } from '../../types/plan';
@@ -22,7 +23,7 @@ export class PlanPhase implements Phase {
         // Install npm dependencies if missing
         const nodeModulesPath = path.join(ctx.workspaceDir, 'node_modules');
         if (!fs.existsSync(nodeModulesPath)) {
-            ctx.events.emit({ type: 'phase', phase: 'installing' });
+            emitPhase(ctx, 'installing');
 
             const gitAction = {
                 type: 'git_result' as const,
@@ -68,12 +69,7 @@ export class PlanPhase implements Phase {
         }
 
         // ── Orchestrator LLM Call ────────────────────────────────────────
-        ctx.events.emit({
-            type: 'phase',
-            phase: 'planning',
-            detail: 'Planning execution strategy',
-            thought: buildPhaseThought('planning', ctx)
-        });
+        emitPhase(ctx, 'planning', 'Planning execution strategy', buildPhaseThought('planning', ctx));
         ctx.events.emit({ type: 'delta', text: '' }); // Signal stream start
 
         // Build workspace-aware system instruction

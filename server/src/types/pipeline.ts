@@ -4,7 +4,7 @@
 import type { EventBus } from '../pipeline/EventBus';
 import type { ProjectMemory } from '../services/projectMemory';
 import type { ExecutionPlan, TransparencyTask } from './plan';
-import type { FileActionEvent, GitResultEvent } from './events';
+import type { FileActionEvent, GitResultEvent, PhaseState } from './events';
 
 // ─── Client Message (from request body) ─────────────────────────────────────
 
@@ -28,6 +28,12 @@ export interface ClientMessage {
     fileActions?: any[];
     serverFileActions?: any[];
     gitActions?: any[];
+    phaseThoughts?: Array<{
+        phase: PhaseState;
+        detail?: string;
+        text?: string;
+        timestamp: number;
+    }>;
 }
 
 // ─── Gemini API Format ──────────────────────────────────────────────────────
@@ -81,6 +87,14 @@ export interface PipelineContext {
 
     /** Completed git/shell action results (accumulated during execution) */
     completedGitActions: GitResultEvent[];
+
+    /** Persisted phase thought entries for post-run history restoration */
+    phaseThoughts: Array<{
+        phase: PhaseState;
+        detail?: string;
+        text?: string;
+        timestamp: number;
+    }>;
 
     /** Verification errors from the last verify cycle (set by VerifyPhase) */
     verificationErrors: {
