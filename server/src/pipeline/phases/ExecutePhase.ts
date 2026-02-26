@@ -11,12 +11,56 @@ import { ai } from '../../services/gemini';
 import { writeFile, deleteFile, readFile, listFiles, generateDiff } from '../../services/fileService';
 import { executeFileAction, runWithConcurrency } from '../../services/executor';
 import { globalFileQueue } from '../../services/fileQueue';
+import {
+    buildImportPreflightFeedback,
+    loadInstalledPackages,
+    validateGeneratedImports,
+    type ImportPreflightResult
+} from '../../services/importPreflight';
 import { detectLanguage } from '../helpers';
 import type { Phase, PhaseResult, PipelineContext } from '../../types/pipeline';
-import type { TransparencyTask } from '../../types/plan';
+import type { ExecutionTask, TaskCreateFile, TaskEditFile, TaskGenerateImage } from '../../types/plan';
 import type { FileActionEvent, GitResultEvent } from '../../types/events';
 
 const execAsync = util.promisify(exec);
+const MAX_FILES_PER_BATCH = 4;
+const FILE_BATCH_CONCURRENCY = 3;
+const MAX_IMPORT_REGEN_ATTEMPTS = 2;
+
+type TaskMeta = {
+    task: ExecutionTask;
+    index: number;
+    taskId: string;
+};
+
+type BatchCapableTask = TaskCreateFile | TaskEditFile | TaskGenerateImage;
+
+function isCodeTask(task: ExecutionTask): task is TaskCreateFile | TaskEditFile {
+    return task.type === 'create_file' || task.type === 'edit_file';
+}
+
+function isFileTask(task: ExecutionTask): boolean {
+    return task.type === 'create_file'
+        || task.type === 'edit_file'
+        || task.type === 'generate_image'
+        || task.type === 'delete_file';
+}
+
+function isBatchCapableTask(task: ExecutionTask): task is BatchCapableTask {
+    return task.type === 'create_file' || task.type === 'edit_file' || task.type === 'generate_image';
+}
+
+function chunk<T>(input: T[], size: number): T[][] {
+    const out: T[][] = [];
+    for (let i = 0; i < input.length; i += size) {
+        out.push(input.slice(i, i + size));
+    }
+    return out;
+}
+
+function normalizeRelPath(relPath: string): string {
+    return path.normalize(relPath).replace(/\\/g, '/');
+}
 
 export class ExecutePhase implements Phase {
     name = 'execute';
@@ -91,13 +135,18 @@ export class ExecutePhase implements Phase {
         // Build executor context
         const executorHistory = ctx.geminiContents.slice(-6);
 
-        // Build file manifest from the plan
-        const fileManifest = plan.tasks
-            .filter((t: any) => t.filepath)
-            .map((t: any) => t.filepath as string);
+        // Use both current workspace files and planned files for stronger context.
+        const plannedPaths = plan.tasks
+            .filter((t): t is TaskCreateFile | TaskEditFile | TaskGenerateImage =>
+                t.type === 'create_file' || t.type === 'edit_file' || t.type === 'generate_image'
+            )
+            .map(t => normalizeRelPath(t.filepath));
+
+        const existingWorkspaceFiles = listFiles(ctx.sessionId).map(normalizeRelPath);
+        const fileManifest = Array.from(new Set([...existingWorkspaceFiles, ...plannedPaths]));
 
         // Pre-generate stable task IDs and emit placeholders
-        const taskMeta = plan.tasks.map((task, index) => ({
+        const taskMeta: TaskMeta[] = plan.tasks.map((task, index) => ({
             task,
             index,
             taskId: `task-${Date.now()}-${index}`
@@ -136,15 +185,113 @@ export class ExecutePhase implements Phase {
             }
         }
 
-        // ── Build Task Factories ─────────────────────────────────────────
-        const taskFactories: (() => Promise<void>)[] = [];
+        const installedPackages = loadInstalledPackages(ctx.workspaceDir);
+        const plannedPathSet = new Set(plannedPaths);
 
-        for (const { task, index, taskId } of taskMeta) {
-            if (task.type === 'create_file' || task.type === 'edit_file') {
-                taskFactories.push(() => globalFileQueue.enqueue(task.filepath, async () => {
+        // ── Execute file tasks in dependency-aware batches ───────────────
+        const fileTaskMeta = taskMeta.filter(meta => isFileTask(meta.task));
+        const fileBatches = this.buildFileExecutionBatches(fileTaskMeta);
+
+        for (let batchIndex = 0; batchIndex < fileBatches.length; batchIndex++) {
+            const batch = fileBatches[batchIndex];
+            ctx.events.emit({
+                type: 'phase',
+                phase: 'executing',
+                detail: `Executing batch ${batchIndex + 1}/${fileBatches.length} (${batch.length} task${batch.length === 1 ? '' : 's'})`
+            });
+
+            const batchFactories = batch.map(meta => async () => {
+                const { task, index, taskId } = meta;
+
+                if (isCodeTask(task)) {
+                    await globalFileQueue.enqueue(task.filepath, async () => {
+                        updateTaskStatus(index, 'in_progress');
+                        completedFileTasks++;
+                        const fileName = task.filepath.split('/').pop() || task.filepath;
+                        ctx.events.emit({
+                            type: 'phase',
+                            phase: 'executing',
+                            detail: `Building ${fileName} (${completedFileTasks} of ${totalFileTasks})`
+                        });
+
+                        try {
+                            let existingContent: string | null = null;
+                            const relatedFiles: Record<string, string> = {};
+
+                            // Use freshest theme content each task to avoid stale context.
+                            if (task.filepath !== 'src/constants/theme.ts') {
+                                try {
+                                    const currentTheme = readFile(ctx.sessionId, 'src/constants/theme.ts');
+                                    if (currentTheme) relatedFiles['src/constants/theme.ts'] = currentTheme;
+                                } catch {
+                                    // theme.ts may not exist yet in early tasks
+                                }
+                            }
+
+                            if (task.type === 'edit_file') {
+                                existingContent = this.readExistingFileWithRelatedImports(
+                                    ctx,
+                                    task.filepath,
+                                    relatedFiles
+                                );
+                            }
+
+                            const { code } = await this.generateWithImportPreflight({
+                                ctx,
+                                task,
+                                executorHistory,
+                                fileManifest,
+                                existingContent,
+                                relatedFiles,
+                                installedPackages,
+                                plannedPathSet,
+                            });
+
+                            const oldContent = writeFile(ctx.sessionId, task.filepath, code);
+                            const diff = oldContent !== null ? generateDiff(oldContent, code, task.filepath) : null;
+                            const lines = code.split('\n').length;
+
+                            const actionResult: FileActionEvent = {
+                                type: 'file_action',
+                                id: taskId,
+                                filename: task.filepath.split('/').pop() || task.filepath,
+                                filepath: task.filepath,
+                                language: detectLanguage(task.filepath),
+                                action: task.type === 'create_file' ? 'created' : 'edited',
+                                content: code,
+                                linesAdded: lines,
+                                linesRemoved: 0,
+                                diff,
+                                status: 'complete'
+                            };
+                            ctx.completedFileActions.push(actionResult);
+                            ctx.events.emit(actionResult);
+                        } catch (err: any) {
+                            console.error(`Executor failed for ${task.filepath}:`, err.message);
+                            const failureResult: FileActionEvent = {
+                                type: 'file_action',
+                                id: taskId,
+                                filename: task.filepath.split('/').pop() || task.filepath,
+                                filepath: task.filepath,
+                                language: detectLanguage(task.filepath),
+                                action: task.type === 'create_file' ? 'created' : 'edited',
+                                content: `[Execution failed: ${err.message}]`,
+                                linesAdded: 0,
+                                linesRemoved: 0,
+                                diff: null,
+                                status: 'complete'
+                            };
+                            ctx.completedFileActions.push(failureResult);
+                            ctx.events.emit(failureResult);
+                        }
+
+                        updateTaskStatus(index, 'done');
+                    });
+                    return;
+                }
+
+                if (task.type === 'generate_image') {
                     updateTaskStatus(index, 'in_progress');
-
-                    // REQ-4.4: Contextual phase update
                     completedFileTasks++;
                     const fileName = task.filepath.split('/').pop() || task.filepath;
                     ctx.events.emit({
@@ -154,128 +301,6 @@ export class ExecutePhase implements Phase {
                     });
 
                     try {
-                        let existingContent: string | null = null;
-                        const relatedFiles: Record<string, string> = {};
-
-                        // REQ-4.1: Inject design tokens as related file context
-                        if (themeContent && task.filepath !== 'src/constants/theme.ts') {
-                            relatedFiles['src/constants/theme.ts'] = themeContent;
-                        }
-
-                        if (task.type === 'edit_file') {
-                            try {
-                                existingContent = readFile(ctx.sessionId, task.filepath);
-                                if (existingContent) {
-                                    const importRegex = /import\s+(?:.*?\s+from\s+)?['"](\.\/.+?|\.\.\/.+?)['"]/g;
-                                    let importMatch;
-                                    while ((importMatch = importRegex.exec(existingContent)) !== null) {
-                                        const importPath = importMatch[1];
-                                        const importDir = path.dirname(task.filepath);
-                                        const resolvedBase = path.join(importDir, importPath);
-                                        if (path.extname(importPath)) {
-                                            try {
-                                                const content = readFile(ctx.sessionId, resolvedBase);
-                                                if (content) relatedFiles[resolvedBase] = content;
-                                            } catch { /* file doesn't exist */ }
-                                        } else {
-                                            const exts = ['.ts', '.tsx', '.js', '.jsx'];
-                                            for (const ext of exts) {
-                                                try {
-                                                    const content = readFile(ctx.sessionId, resolvedBase + ext);
-                                                    if (content) {
-                                                        relatedFiles[resolvedBase + ext] = content;
-                                                        break;
-                                                    }
-                                                } catch { /* file doesn't exist */ }
-                                            }
-                                        }
-                                    }
-                                }
-                            } catch {
-                                existingContent = null;
-                            }
-                        }
-
-                        const code = await executeFileAction(
-                            executorHistory,
-                            ctx.sessionId,
-                            task.filepath,
-                            task.prompt,
-                            fileManifest,
-                            existingContent,
-                            Object.keys(relatedFiles).length > 0 ? relatedFiles : undefined
-                        );
-
-                        const oldContent = writeFile(ctx.sessionId, task.filepath, code);
-                        const diff = oldContent !== null ? generateDiff(oldContent, code, task.filepath) : null;
-                        const lines = code.split('\n').length;
-
-                        const actionResult: FileActionEvent = {
-                            type: 'file_action',
-                            id: taskId,
-                            filename: task.filepath.split('/').pop() || task.filepath,
-                            filepath: task.filepath,
-                            language: detectLanguage(task.filepath),
-                            action: task.type === 'create_file' ? 'created' : 'edited',
-                            content: code,
-                            linesAdded: lines,
-                            linesRemoved: 0,
-                            diff,
-                            status: 'complete'
-                        };
-                        ctx.completedFileActions.push(actionResult);
-                        ctx.events.emit(actionResult);
-                        updateTaskStatus(index, 'done');
-                    } catch (err: any) {
-                        console.error(`Executor failed for ${task.filepath}:`, err.message);
-                        const failureResult: FileActionEvent = {
-                            type: 'file_action',
-                            id: taskId,
-                            filename: task.filepath.split('/').pop() || task.filepath,
-                            filepath: task.filepath,
-                            language: detectLanguage(task.filepath),
-                            action: task.type === 'create_file' ? 'created' : 'edited',
-                            content: `[Execution failed: ${err.message}]`,
-                            linesAdded: 0,
-                            linesRemoved: 0,
-                            diff: null,
-                            status: 'complete'
-                        };
-                        ctx.completedFileActions.push(failureResult);
-                        ctx.events.emit(failureResult);
-                        updateTaskStatus(index, 'done');
-                    }
-                }));
-
-            } else if (task.type === 'delete_file') {
-                updateTaskStatus(index, 'in_progress');
-                try {
-                    deleteFile(ctx.sessionId, task.filepath);
-                    const deleteResult: FileActionEvent = {
-                        type: 'file_action',
-                        id: taskId,
-                        filename: task.filepath.split('/').pop() || task.filepath,
-                        filepath: task.filepath,
-                        language: detectLanguage(task.filepath),
-                        action: 'deleted',
-                        content: '',
-                        linesAdded: 0,
-                        linesRemoved: 0,
-                        diff: null,
-                        status: 'complete'
-                    };
-                    ctx.completedFileActions.push(deleteResult);
-                    ctx.events.emit(deleteResult);
-                } catch (err: any) {
-                    console.warn(`Failed to delete ${task.filepath}:`, err.message);
-                }
-                updateTaskStatus(index, 'done');
-
-            } else if (task.type === 'generate_image') {
-                taskFactories.push(async () => {
-                    updateTaskStatus(index, 'in_progress');
-                    try {
-                        // REQ-4.3: Image prompt quality gate — enhance short/vague prompts
                         let finalPrompt = task.prompt;
                         if (finalPrompt.split(/\s+/).length < 10) {
                             finalPrompt += '. High quality, professional, well-lit, detailed, modern aesthetic.';
@@ -303,8 +328,6 @@ export class ExecutePhase implements Phase {
                         if (!imageBuffer) throw new Error('No image data in response');
 
                         const fullPath = path.join(ctx.workspaceDir, task.filepath);
-
-                        // Ensure parent directory exists (e.g. public/images)
                         const parentDir = path.dirname(fullPath);
                         if (!fs.existsSync(parentDir)) {
                             fs.mkdirSync(parentDir, { recursive: true });
@@ -328,7 +351,6 @@ export class ExecutePhase implements Phase {
                         };
                         ctx.completedFileActions.push(imgResult);
                         ctx.events.emit(imgResult);
-                        updateTaskStatus(index, 'done');
                     } catch (err: any) {
                         console.error(`Image generation failed for ${task.filepath}:`, err.message);
                         const imgFailureResult: FileActionEvent = {
@@ -347,78 +369,322 @@ export class ExecutePhase implements Phase {
                         };
                         ctx.completedFileActions.push(imgFailureResult);
                         ctx.events.emit(imgFailureResult);
-                        updateTaskStatus(index, 'done');
                     }
-                });
 
-            } else if (task.type === 'git_action') {
-                taskFactories.push(async () => {
+                    updateTaskStatus(index, 'done');
+                    return;
+                }
+
+                if (task.type === 'delete_file') {
                     updateTaskStatus(index, 'in_progress');
-                    const command = task.command;
-                    if (!command.trim().startsWith('git ')) {
-                        const errorResult: GitResultEvent = {
-                            type: 'git_result',
-                            id: `git-${Date.now()}-${index}`,
-                            index,
-                            error: 'Security Error: Only `git` commands are allowed.'
-                        };
-                        ctx.completedGitActions.push(errorResult);
-                        ctx.events.emit(errorResult);
-                        updateTaskStatus(index, 'done');
-                        return;
-                    }
-                    if (/[;|$<>]/.test(command)) {
-                        const errorResult: GitResultEvent = {
-                            type: 'git_result',
-                            id: `git-${Date.now()}-${index}`,
-                            index,
-                            error: 'Security Error: Command contains forbidden shell characters.'
-                        };
-                        ctx.completedGitActions.push(errorResult);
-                        ctx.events.emit(errorResult);
-                        updateTaskStatus(index, 'done');
-                        return;
-                    }
-
                     try {
-                        const env = { ...process.env, GIT_CEILING_DIRECTORIES: path.dirname(ctx.workspaceDir) };
-                        let cmdToRun = command;
-                        if (cmdToRun.trim() === 'git push') {
-                            cmdToRun = 'git push -u origin HEAD';
-                        }
-                        const { stdout, stderr } = await execAsync(cmdToRun, { cwd: ctx.workspaceDir, env });
-                        const out = (stdout || stderr || '').trim() || 'Command completed successfully.';
-                        const gitResult: GitResultEvent = {
-                            type: 'git_result',
-                            id: `git-${Date.now()}-${index}`,
-                            index,
-                            output: out,
-                            command: cmdToRun,
-                            action: 'execute'
+                        deleteFile(ctx.sessionId, task.filepath);
+                        const deleteResult: FileActionEvent = {
+                            type: 'file_action',
+                            id: taskId,
+                            filename: task.filepath.split('/').pop() || task.filepath,
+                            filepath: task.filepath,
+                            language: detectLanguage(task.filepath),
+                            action: 'deleted',
+                            content: '',
+                            linesAdded: 0,
+                            linesRemoved: 0,
+                            diff: null,
+                            status: 'complete'
                         };
-                        ctx.completedGitActions.push(gitResult);
-                        ctx.events.emit(gitResult);
+                        ctx.completedFileActions.push(deleteResult);
+                        ctx.events.emit(deleteResult);
                     } catch (err: any) {
-                        const errorOut = (err.stdout || err.stderr || err.message || '').trim();
-                        const gitErrorResult: GitResultEvent = {
-                            type: 'git_result',
-                            id: `git-${Date.now()}-${index}`,
-                            index,
-                            error: `Failed: ${errorOut}`,
-                            command,
-                            action: 'execute'
-                        };
-                        ctx.completedGitActions.push(gitErrorResult);
-                        ctx.events.emit(gitErrorResult);
+                        console.warn(`Failed to delete ${task.filepath}:`, err.message);
                     }
                     updateTaskStatus(index, 'done');
-                });
+                }
+            });
+
+            await runWithConcurrency(batchFactories, Math.min(FILE_BATCH_CONCURRENCY, batch.length));
+        }
+
+        // ── Execute git tasks sequentially after file batches ────────────
+        const gitTasks = taskMeta
+            .filter(meta => meta.task.type === 'git_action')
+            .sort((a, b) => a.index - b.index);
+
+        for (const { task, index } of gitTasks) {
+            if (task.type !== 'git_action') continue;
+
+            updateTaskStatus(index, 'in_progress');
+            const command = task.command;
+            if (!command.trim().startsWith('git ')) {
+                const errorResult: GitResultEvent = {
+                    type: 'git_result',
+                    id: `git-${Date.now()}-${index}`,
+                    index,
+                    error: 'Security Error: Only `git` commands are allowed.'
+                };
+                ctx.completedGitActions.push(errorResult);
+                ctx.events.emit(errorResult);
+                updateTaskStatus(index, 'done');
+                continue;
+            }
+            if (/[;|$<>]/.test(command)) {
+                const errorResult: GitResultEvent = {
+                    type: 'git_result',
+                    id: `git-${Date.now()}-${index}`,
+                    index,
+                    error: 'Security Error: Command contains forbidden shell characters.'
+                };
+                ctx.completedGitActions.push(errorResult);
+                ctx.events.emit(errorResult);
+                updateTaskStatus(index, 'done');
+                continue;
+            }
+
+            try {
+                const env = { ...process.env, GIT_CEILING_DIRECTORIES: path.dirname(ctx.workspaceDir) };
+                let cmdToRun = command;
+                if (cmdToRun.trim() === 'git push') {
+                    cmdToRun = 'git push -u origin HEAD';
+                }
+                const { stdout, stderr } = await execAsync(cmdToRun, { cwd: ctx.workspaceDir, env });
+                const out = (stdout || stderr || '').trim() || 'Command completed successfully.';
+                const gitResult: GitResultEvent = {
+                    type: 'git_result',
+                    id: `git-${Date.now()}-${index}`,
+                    index,
+                    output: out,
+                    command: cmdToRun,
+                    action: 'execute'
+                };
+                ctx.completedGitActions.push(gitResult);
+                ctx.events.emit(gitResult);
+            } catch (err: any) {
+                const errorOut = (err.stdout || err.stderr || err.message || '').trim();
+                const gitErrorResult: GitResultEvent = {
+                    type: 'git_result',
+                    id: `git-${Date.now()}-${index}`,
+                    index,
+                    error: `Failed: ${errorOut}`,
+                    command,
+                    action: 'execute'
+                };
+                ctx.completedGitActions.push(gitErrorResult);
+                ctx.events.emit(gitErrorResult);
+            }
+            updateTaskStatus(index, 'done');
+        }
+
+        return { status: 'continue' };
+    }
+
+    private readExistingFileWithRelatedImports(
+        ctx: PipelineContext,
+        filepath: string,
+        relatedFiles: Record<string, string>
+    ): string | null {
+        try {
+            const existingContent = readFile(ctx.sessionId, filepath);
+            if (!existingContent) return null;
+
+            const importRegex = /import\s+(?:.*?\s+from\s+)?['"](\.\/.+?|\.\.\/.+?)['"]/g;
+            let importMatch: RegExpExecArray | null;
+            while ((importMatch = importRegex.exec(existingContent)) !== null) {
+                const importPath = importMatch[1];
+                const importDir = path.dirname(filepath);
+                const resolvedBase = normalizeRelPath(path.join(importDir, importPath));
+
+                if (path.extname(importPath)) {
+                    try {
+                        const content = readFile(ctx.sessionId, resolvedBase);
+                        if (content) relatedFiles[resolvedBase] = content;
+                    } catch {
+                        // ignore missing related file context
+                    }
+                } else {
+                    const exts = ['.ts', '.tsx', '.js', '.jsx'];
+                    for (const ext of exts) {
+                        try {
+                            const resolvedPath = `${resolvedBase}${ext}`;
+                            const content = readFile(ctx.sessionId, resolvedPath);
+                            if (content) {
+                                relatedFiles[resolvedPath] = content;
+                                break;
+                            }
+                        } catch {
+                            // keep checking candidates
+                        }
+                    }
+                }
+            }
+            return existingContent;
+        } catch {
+            return null;
+        }
+    }
+
+    private async generateWithImportPreflight(params: {
+        ctx: PipelineContext;
+        task: TaskCreateFile | TaskEditFile;
+        executorHistory: any[];
+        fileManifest: string[];
+        existingContent: string | null;
+        relatedFiles: Record<string, string>;
+        installedPackages: Set<string>;
+        plannedPathSet: Set<string>;
+    }): Promise<{ code: string; validation: ImportPreflightResult }> {
+        const {
+            ctx,
+            task,
+            executorHistory,
+            fileManifest,
+            existingContent,
+            relatedFiles,
+            installedPackages,
+            plannedPathSet,
+        } = params;
+
+        let prompt = task.prompt;
+        let code = '';
+        let validation: ImportPreflightResult = { ok: true, missingPackages: [], missingRelativeImports: [] };
+
+        for (let attempt = 0; attempt <= MAX_IMPORT_REGEN_ATTEMPTS; attempt++) {
+            code = await executeFileAction(
+                executorHistory,
+                ctx.sessionId,
+                task.filepath,
+                prompt,
+                fileManifest,
+                existingContent,
+                Object.keys(relatedFiles).length > 0 ? relatedFiles : undefined
+            );
+
+            validation = validateGeneratedImports({
+                workspaceDir: ctx.workspaceDir,
+                sourceFilepath: normalizeRelPath(task.filepath),
+                code,
+                installedPackages,
+                plannedPaths: plannedPathSet,
+            });
+
+            if (validation.ok) {
+                return { code, validation };
+            }
+
+            if (attempt < MAX_IMPORT_REGEN_ATTEMPTS) {
+                const feedback = buildImportPreflightFeedback(validation);
+                prompt = `${task.prompt}\n\n${feedback}`;
             }
         }
 
-        // Execute with concurrency limit
-        await runWithConcurrency(taskFactories, 5);
+        throw new Error(buildImportPreflightFeedback(validation));
+    }
 
-        return { status: 'continue' };
+    private getTaskDependencies(task: ExecutionTask): string[] {
+        if (task.type === 'create_file' || task.type === 'edit_file' || task.type === 'generate_image') {
+            if (Array.isArray(task.depends_on)) {
+                return task.depends_on.map(normalizeRelPath);
+            }
+        }
+        return [];
+    }
+
+    private getTaskBatchId(task: ExecutionTask): string | null {
+        if (isBatchCapableTask(task) && typeof task.batch_id === 'string' && task.batch_id.trim()) {
+            return task.batch_id.trim();
+        }
+        return null;
+    }
+
+    private buildFileExecutionBatches(fileTaskMeta: TaskMeta[]): TaskMeta[][] {
+        if (fileTaskMeta.length === 0) return [];
+
+        const orderedMeta = [...fileTaskMeta].sort((a, b) => a.index - b.index);
+
+        const pathToMeta = new Map<string, TaskMeta>();
+        for (const meta of orderedMeta) {
+            const task = meta.task;
+            if (task.type === 'create_file' || task.type === 'edit_file' || task.type === 'generate_image') {
+                pathToMeta.set(normalizeRelPath(task.filepath), meta);
+            }
+        }
+
+        const memoLayer = new Map<string, number>();
+        const visiting = new Set<string>();
+
+        const layerForPath = (relPath: string): number => {
+            const normalized = normalizeRelPath(relPath);
+            if (memoLayer.has(normalized)) return memoLayer.get(normalized)!;
+            if (visiting.has(normalized)) return 0;
+
+            visiting.add(normalized);
+            const meta = pathToMeta.get(normalized);
+            if (!meta) {
+                visiting.delete(normalized);
+                memoLayer.set(normalized, 0);
+                return 0;
+            }
+
+            let layer = normalized === 'src/constants/theme.ts' ? 0 : 0;
+            const deps = this.getTaskDependencies(meta.task);
+            for (const dep of deps) {
+                if (pathToMeta.has(dep)) {
+                    layer = Math.max(layer, layerForPath(dep) + 1);
+                }
+            }
+
+            visiting.delete(normalized);
+            memoLayer.set(normalized, layer);
+            return layer;
+        };
+
+        const byLayer = new Map<number, TaskMeta[]>();
+        for (const meta of orderedMeta) {
+            const task = meta.task;
+            let layer = 0;
+            if (task.type === 'create_file' || task.type === 'edit_file' || task.type === 'generate_image') {
+                layer = layerForPath(task.filepath);
+            }
+            if (!byLayer.has(layer)) byLayer.set(layer, []);
+            byLayer.get(layer)!.push(meta);
+        }
+
+        const layers = Array.from(byLayer.keys()).sort((a, b) => a - b);
+        const batches: TaskMeta[][] = [];
+
+        for (const layer of layers) {
+            const layerTasks = (byLayer.get(layer) || []).sort((a, b) => a.index - b.index);
+
+            const explicitGroups = new Map<string, TaskMeta[]>();
+            const ungrouped: TaskMeta[] = [];
+
+            for (const meta of layerTasks) {
+                const batchId = this.getTaskBatchId(meta.task);
+                if (batchId) {
+                    if (!explicitGroups.has(batchId)) explicitGroups.set(batchId, []);
+                    explicitGroups.get(batchId)!.push(meta);
+                } else {
+                    ungrouped.push(meta);
+                }
+            }
+
+            const layerGroups: Array<{ minIndex: number; tasks: TaskMeta[] }> = [];
+
+            for (const tasks of explicitGroups.values()) {
+                const sortedGroup = [...tasks].sort((a, b) => a.index - b.index);
+                for (const part of chunk(sortedGroup, MAX_FILES_PER_BATCH)) {
+                    layerGroups.push({ minIndex: part[0].index, tasks: part });
+                }
+            }
+
+            for (const part of chunk(ungrouped, MAX_FILES_PER_BATCH)) {
+                layerGroups.push({ minIndex: part[0].index, tasks: part });
+            }
+
+            layerGroups.sort((a, b) => a.minIndex - b.minIndex);
+            for (const group of layerGroups) {
+                batches.push(group.tasks);
+            }
+        }
+
+        return batches;
     }
 }

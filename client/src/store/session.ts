@@ -28,6 +28,8 @@ interface SessionStore {
     addServerFileAction: (msgId: string, action: FileAction) => void;
     setTransparency: (msgId: string, data: TransparencyData) => void;
     setSummary: (msgId: string, summary: string) => void;
+    addPhaseThought: (msgId: string, phase: PhaseState, detail?: string) => void;
+    appendPhaseThoughtDelta: (msgId: string, delta: string, fallbackPhase?: PhaseState) => void;
     updateGitActionResult: (msgId: string, index: number, output?: string, error?: string, action?: 'clone' | 'execute', command?: string) => void;
     setMessages: (messages: Message[]) => void;
     startNewSession: () => void;
@@ -70,7 +72,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         messages: [...s.messages, {
             id: crypto.randomUUID(), role: 'user', content,
             displayContent: content, attachments,
-            transparency: null, fileActions: [], serverFileActions: [], gitActions: [],
+            transparency: null, fileActions: [], serverFileActions: [], gitActions: [], phaseThoughts: [],
             status: 'complete', timestamp: Date.now(), sessionId: s.sessionId || undefined
         }]
     })),
@@ -81,7 +83,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             streamActive: true,
             messages: [...s.messages, {
                 id, role: 'assistant', content: '', displayContent: '',
-                transparency: null, fileActions: [], serverFileActions: [], gitActions: [], status: 'streaming', timestamp: Date.now(), sessionId: s.sessionId || undefined
+                transparency: null, fileActions: [], serverFileActions: [], gitActions: [], phaseThoughts: [], status: 'streaming', timestamp: Date.now(), sessionId: s.sessionId || undefined
             }]
         }));
         return id;
@@ -170,6 +172,57 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         messages: s.messages.map(m =>
             m.id === msgId ? { ...m, summary } : m
         )
+    })),
+
+    addPhaseThought: (msgId, phase, detail) => set(s => ({
+        messages: s.messages.map(m => {
+            if (m.id !== msgId || m.role !== 'assistant' || phase === 'ready') return m;
+
+            const thoughts = [...(m.phaseThoughts || [])];
+            const last = thoughts[thoughts.length - 1];
+
+            if (last?.phase === phase) {
+                thoughts[thoughts.length - 1] = {
+                    ...last,
+                    detail: detail || last.detail,
+                    timestamp: Date.now(),
+                };
+            } else {
+                thoughts.push({
+                    phase,
+                    detail,
+                    timestamp: Date.now(),
+                });
+            }
+
+            return { ...m, phaseThoughts: thoughts };
+        })
+    })),
+
+    appendPhaseThoughtDelta: (msgId, delta, fallbackPhase = 'responding') => set(s => ({
+        messages: s.messages.map(m => {
+            if (m.id !== msgId || m.role !== 'assistant' || !delta) return m;
+
+            const thoughts = [...(m.phaseThoughts || [])];
+            if (thoughts.length === 0) {
+                thoughts.push({
+                    phase: fallbackPhase,
+                    detail: undefined,
+                    text: delta,
+                    timestamp: Date.now(),
+                });
+                return { ...m, phaseThoughts: thoughts };
+            }
+
+            const lastIdx = thoughts.length - 1;
+            const last = thoughts[lastIdx];
+            thoughts[lastIdx] = {
+                ...last,
+                text: (last.text || '') + delta,
+                timestamp: Date.now(),
+            };
+            return { ...m, phaseThoughts: thoughts };
+        })
     })),
 
     updateGitActionResult: (msgId, index, output, error, action, command) => set(s => ({
@@ -262,6 +315,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
                     fileActions: m.fileActions || [],
                     serverFileActions: m.serverFileActions || [],
                     gitActions: m.gitActions || [],
+                    phaseThoughts: m.phaseThoughts || [],
                     status: (m.status || 'complete') as Message['status'],
                     sessionId: m.sessionId || sessionId
                 }));
@@ -297,6 +351,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
                                         command: devData.command,
                                         output: devData.logs
                                     }],
+                                    phaseThoughts: [],
                                     status: 'complete',
                                     timestamp: Date.now()
                                 }]

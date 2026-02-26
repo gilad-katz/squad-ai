@@ -5,6 +5,52 @@ import { TransparencyPanel } from '../transparency/TransparencyPanel';
 import { FileActionCard } from '../files/FileActionCard';
 import { GitTerminalView } from './GitTerminalView';
 
+function phaseLabel(phase: string): string {
+    switch (phase) {
+        case 'thinking':
+            return 'Understanding Request';
+        case 'planning':
+            return 'Planning';
+        case 'installing':
+            return 'Installing Dependencies';
+        case 'executing':
+            return 'Executing';
+        case 'verifying':
+            return 'Verifying';
+        case 'repairing':
+            return 'Repairing';
+        case 'building':
+            return 'Building';
+        case 'responding':
+            return 'Responding';
+        default:
+            return phase;
+    }
+}
+
+function phaseDefaultThought(phase: string): string {
+    switch (phase) {
+        case 'thinking':
+            return 'Reviewing your request and constraints.';
+        case 'planning':
+            return 'Breaking the work into concrete implementation steps.';
+        case 'installing':
+            return 'Setting up required dependencies.';
+        case 'executing':
+            return 'Applying code changes in the workspace.';
+        case 'verifying':
+            return 'Checking build, lint, and runtime behavior.';
+        case 'repairing':
+            return 'Addressing issues found during verification.';
+        case 'building':
+            return 'Producing the requested output and artifacts.';
+        case 'responding':
+            return 'Preparing final results and next actions.';
+        default:
+            return 'Processing this step.';
+    }
+}
+
 interface MessageBubbleProps {
     message: Message;
     onRetry?: (id: string) => void;
@@ -52,6 +98,9 @@ export const MessageBubble = React.memo(function MessageBubble({
     const hasGitActions = message.gitActions && message.gitActions.length > 0;
     const hasToolingData = hasFileActions || hasGitActions || !!message.transparency;
     const hasReasoning = !!message.transparency?.reasoning;
+    const phaseThoughts = message.phaseThoughts || [];
+    const phaseThoughtCards = phaseThoughts.filter((step) => !!(step.detail || step.text?.trim()));
+    const hasStepText = phaseThoughtCards.some((step) => !!step.text?.trim());
 
     if (message.status === 'streaming' && !message.displayContent && !hasToolingData) {
         return null;
@@ -66,7 +115,48 @@ export const MessageBubble = React.memo(function MessageBubble({
                 className={`flex flex-col max-w-[85%] min-w-[220px] bg-white border rounded-2xl rounded-tl-sm shadow-sm overflow-hidden text-left transition-all duration-200 ${canSelectTooling ? 'cursor-pointer hover:shadow-md' : ''} ${isToolingSelected ? 'border-blue-300 ring-2 ring-blue-100' : 'border-gray-200'
                     }`}
             >
-                {message.displayContent && (
+                {!toolingInline && (phaseThoughtCards.length > 0 || hasReasoning) && (
+                    <div className={`px-5 py-4 bg-blue-50/40 ${message.displayContent ? 'border-b border-gray-100' : 'border-t border-blue-100'}`}>
+                        <h4 className="text-[11px] font-bold uppercase tracking-wider text-blue-700 mb-2">
+                            Thought Process
+                        </h4>
+                        {phaseThoughtCards.length > 0 && (
+                            <div className="space-y-2 mb-2.5">
+                                {phaseThoughtCards.map((step, idx) => {
+                                    const thoughtText = step.text?.trim();
+                                    const detailText = step.detail?.trim();
+                                    const fallback = phaseDefaultThought(step.phase);
+                                    const primary = thoughtText || detailText || fallback;
+                                    return (
+                                        <div key={`${step.phase}-${idx}`} className="rounded-md border border-blue-100 bg-white/70 px-3 py-2">
+                                            <div className="text-[11px] font-bold text-blue-700 uppercase tracking-wide">
+                                                {idx + 1}. {phaseLabel(step.phase)}
+                                            </div>
+                                            <div className="mt-1 text-sm text-gray-700 leading-relaxed">
+                                                {message.status === 'streaming' ? (
+                                                    <div className="whitespace-pre-wrap">{primary}</div>
+                                                ) : (
+                                                    <MarkdownRenderer content={primary} />
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        {!hasStepText && hasReasoning && (
+                            <div className="text-sm text-gray-700 leading-relaxed">
+                                {message.status === 'streaming' ? (
+                                    <p className="whitespace-pre-wrap">{message.transparency?.reasoning}</p>
+                                ) : (
+                                    <MarkdownRenderer content={message.transparency?.reasoning || ''} />
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {message.displayContent && !(!toolingInline && hasStepText) && (
                     <div className="p-5">
                         <div className="prose prose-blue max-w-none">
                             {message.status === 'streaming' ? (
@@ -77,17 +167,6 @@ export const MessageBubble = React.memo(function MessageBubble({
                                 <MarkdownRenderer content={message.displayContent} />
                             )}
                         </div>
-                    </div>
-                )}
-
-                {!toolingInline && hasReasoning && (
-                    <div className="px-5 py-4 border-t border-gray-100 bg-blue-50/40">
-                        <h4 className="text-[11px] font-bold uppercase tracking-wider text-blue-700 mb-1.5">
-                            Thought Process
-                        </h4>
-                        <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-                            {message.transparency?.reasoning}
-                        </p>
                     </div>
                 )}
 

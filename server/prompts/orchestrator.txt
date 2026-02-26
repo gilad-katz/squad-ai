@@ -23,6 +23,7 @@ You MUST output ONLY a valid JSON object matching this exact schema. No markdown
       "type": "create_file",
       "filepath": "src/components/Header.tsx",
       "prompt": "Detailed description of what this file should contain, its purpose, exports, styling requirements, and how it integrates with the rest of the app.",
+      "batch_id": "core-shell",
       "purpose": "Navigation shell with responsive hamburger menu and route links",
       "depends_on": ["src/constants/theme.ts", "src/constants/routes.ts"],
       "feeds_into": ["src/App.tsx"]
@@ -56,6 +57,12 @@ TASK TYPES:
 - "delete_file": Delete a file. Only `filepath` is required.
 - "generate_image": Generate an image using an AI model. Provide `filepath` and `prompt`.
 - "git_action": Execute a git command. Provide `command` (must start with "git").
+
+BATCHING FOR ROBUST EXECUTION (CRITICAL):
+- For tightly coupled files that should be generated together, set the same optional `batch_id` on each related `create_file`/`edit_file`/`generate_image` task.
+- Keep batches small (2-4 files). Do NOT create giant batches.
+- Good candidates for a shared `batch_id`: component + its types + its local constants.
+- Still provide `depends_on` so execution can order batches by dependency layers.
 
 DESIGN SYSTEM FIRST (CRITICAL — REQ-2.1):
 For EVERY new project, the FIRST file task must create `src/constants/theme.ts`:

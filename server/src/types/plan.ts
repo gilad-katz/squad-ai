@@ -12,6 +12,8 @@ export interface TaskCreateFile {
     type: 'create_file';
     filepath: string;
     prompt: string;
+    /** Optional batch group id for tightly coupled files */
+    batch_id?: string;
     /** REQ-2.2: Human-readable purpose of this file */
     purpose?: string;
     /** REQ-2.2: File paths this task depends on */
@@ -24,6 +26,8 @@ export interface TaskEditFile {
     type: 'edit_file';
     filepath: string;
     prompt: string;
+    /** Optional batch group id for tightly coupled files */
+    batch_id?: string;
     /** REQ-2.2: Human-readable purpose of this edit */
     purpose?: string;
     /** REQ-2.2: File paths this task depends on */
@@ -41,6 +45,10 @@ export interface TaskGenerateImage {
     type: 'generate_image';
     filepath: string;
     prompt: string;
+    /** Optional batch group id for tightly coupled asset sets */
+    batch_id?: string;
+    /** Optional dependencies for generation ordering */
+    depends_on?: string[];
 }
 
 export interface TaskGitAction {

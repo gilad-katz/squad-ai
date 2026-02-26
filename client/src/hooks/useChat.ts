@@ -95,6 +95,7 @@ export function useChat() {
                 // onDelta — conversational text from the orchestrator chat tasks
                 onDelta: (delta) => {
                     useSessionStore.getState().appendAgentDelta(agentMsgId, delta);
+                    useSessionStore.getState().appendPhaseThoughtDelta(agentMsgId, delta, useSessionStore.getState().phase);
                 },
                 // onDone — finalize
                 onDone: (usage, returnedSessionId) => {
@@ -131,6 +132,7 @@ export function useChat() {
                 // onPhase — phase transitions from the backend orchestrator
                 onPhase: (phase, detail) => {
                     useSessionStore.getState().setPhase(phase, detail);
+                    useSessionStore.getState().addPhaseThought(agentMsgId, phase, detail);
                 },
                 // onTransparency — reasoning and task breakdown from the orchestrator
                 onTransparency: (data) => {

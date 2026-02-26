@@ -53,6 +53,12 @@ export interface Message {
     fileActions: FileAction[];
     serverFileActions: FileAction[];
     gitActions: GitAction[];
+    phaseThoughts?: Array<{
+        phase: PhaseState;
+        detail?: string;
+        text?: string;
+        timestamp: number;
+    }>;
     summary?: string;
     status: 'complete' | 'streaming' | 'error';
     sessionId?: string;
