@@ -109,43 +109,50 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
 
                 {messages.length === 0 ? (
                     <div className="flex h-[60vh] flex-col items-center justify-center text-center px-4 animate-fade-in">
-                        <div className="w-20 h-20 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-3xl flex items-center justify-center mb-8 text-white text-3xl font-bold shadow-xl shadow-blue-500/20 rotate-3 hover:rotate-0 transition-transform duration-500">
-                            FE
+                        <div className="flex items-center gap-4 mb-8">
+                            <div className="w-16 h-16 bg-gradient-to-tr from-purple-600 to-pink-500 rounded-3xl flex items-center justify-center text-white text-2xl font-bold shadow-xl shadow-purple-500/20 -rotate-3 hover:rotate-0 transition-transform duration-500">
+                                PM
+                            </div>
+                            <div className="text-2xl text-gray-300 font-light">+</div>
+                            <div className="w-16 h-16 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-3xl flex items-center justify-center text-white text-2xl font-bold shadow-xl shadow-blue-500/20 rotate-3 hover:rotate-0 transition-transform duration-500">
+                                FE
+                            </div>
                         </div>
-                        <h2 className="text-3xl font-extrabold text-gray-900 mb-3 tracking-tight">How can I help you build today?</h2>
+                        <h2 className="text-3xl font-extrabold text-gray-900 mb-3 tracking-tight">Your AI Product Team</h2>
                         <p className="max-w-md text-lg text-gray-500 mb-10 leading-relaxed font-medium">
-                            I'm <span className="text-blue-600 font-bold">FE-SENIOR-01</span>, your expert frontend collaborator.
-                            I'm ready to architect, implement, and refine your React applications.
+                            <span className="text-purple-600 font-bold">PM-AGENT-01</span> defines requirements &amp; design.
+                            {' '}<span className="text-blue-600 font-bold">FE-SENIOR-01</span> architects &amp; builds.
+                            Together, they ship your vision.
                         </p>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl stagger-load">
+                            <div className="p-4 bg-white border border-gray-200 rounded-2xl text-left hover:border-purple-400 hover:shadow-md transition-all">
+                                <h3 className="text-sm font-bold text-gray-900 mb-1 flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+                                    Build a Web App
+                                </h3>
+                                <p className="text-xs text-gray-500 leading-normal">"Build me a beautiful calculator app with a dark theme and history panel."</p>
+                            </div>
                             <div className="p-4 bg-white border border-gray-200 rounded-2xl text-left hover:border-blue-400 hover:shadow-md transition-all">
                                 <h3 className="text-sm font-bold text-gray-900 mb-1 flex items-center gap-2">
                                     <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                                    Build a UI Component
+                                    Implement a Feature
                                 </h3>
-                                <p className="text-xs text-gray-500 leading-normal">"Create a responsive navigation bar with a glassmorphism effect using Tailwind CSS."</p>
+                                <p className="text-xs text-gray-500 leading-normal">"Add a responsive sidebar with collapsible sections and dark mode support."</p>
                             </div>
-                            <div className="p-4 bg-white border border-gray-200 rounded-2xl text-left hover:border-blue-400 hover:shadow-md transition-all">
-                                <h3 className="text-sm font-bold text-gray-900 mb-1 flex items-center gap-2">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
-                                    Implement Logic
-                                </h3>
-                                <p className="text-xs text-gray-500 leading-normal">"Write a TypeScript custom hook for handling paginated API data with caching via Zustand."</p>
-                            </div>
-                            <div className="p-4 bg-white border border-gray-200 rounded-2xl text-left hover:border-blue-400 hover:shadow-md transition-all">
+                            <div className="p-4 bg-white border border-gray-200 rounded-2xl text-left hover:border-green-400 hover:shadow-md transition-all">
                                 <h3 className="text-sm font-bold text-gray-900 mb-1 flex items-center gap-2">
                                     <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                                    Refactor & Improve
+                                    Refactor &amp; Improve
                                 </h3>
-                                <p className="text-xs text-gray-500 leading-normal">"Analyze this component for performance bottlenecks and refactor it to minimize re-renders."</p>
+                                <p className="text-xs text-gray-500 leading-normal">"Analyze this app for performance issues and refactor it with best practices."</p>
                             </div>
-                            <div className="p-4 bg-white border border-gray-200 rounded-2xl text-left hover:border-blue-400 hover:shadow-md transition-all">
+                            <div className="p-4 bg-white border border-gray-200 rounded-2xl text-left hover:border-amber-400 hover:shadow-md transition-all">
                                 <h3 className="text-sm font-bold text-gray-900 mb-1 flex items-center gap-2">
                                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
                                     Debug Issues
                                 </h3>
-                                <p className="text-xs text-gray-500 leading-normal">"Help me fix a hydrate error occurring in my Next.js layout when using client-side store."</p>
+                                <p className="text-xs text-gray-500 leading-normal">"Help me fix a hydration error in my Next.js app using client-side store."</p>
                             </div>
                         </div>
                     </div>

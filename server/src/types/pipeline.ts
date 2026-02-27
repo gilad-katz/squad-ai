@@ -3,8 +3,8 @@
 
 import type { EventBus } from '../pipeline/EventBus';
 import type { ProjectMemory } from '../services/projectMemory';
-import type { ExecutionPlan, TransparencyTask } from './plan';
-import type { FileActionEvent, GitResultEvent, PhaseState } from './events';
+import type { ExecutionPlan, PMSpec, TransparencyTask } from './plan';
+import type { AgentIdentity, FileActionEvent, GitResultEvent, PhaseState } from './events';
 
 // ─── Client Message (from request body) ─────────────────────────────────────
 
@@ -66,6 +66,12 @@ export interface PipelineContext {
 
     /** Whether this is a newly created workspace */
     isNewSession: boolean;
+
+    /** PM Agent specification (set by PMAnalyzePhase) */
+    pmSpec: PMSpec | null;
+
+    /** Current active agent identity */
+    activeAgent: AgentIdentity | null;
 
     /** Orchestrator execution plan (set by PlanPhase) */
     plan: ExecutionPlan | null;

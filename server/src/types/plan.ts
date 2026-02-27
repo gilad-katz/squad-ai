@@ -71,6 +71,33 @@ export interface ExecutionPlan {
     tasks: ExecutionTask[];
 }
 
+// ─── PM Agent Spec Types ─────────────────────────────────────────────────────
+
+export interface PMRequirement {
+    id: string;
+    description: string;
+    acceptance: string;
+    priority: 'P0' | 'P1' | 'P2';
+}
+
+export interface PMSpec {
+    title: string;
+    requirements: PMRequirement[];
+    design: {
+        theme: string;
+        layout: string;
+        typography: string;
+        key_interactions: string[];
+    };
+    scope: {
+        this_turn: string[];
+        next_turn: string[];
+    };
+    suggestions: string[];
+    /** Natural language message shown to the user in the chat */
+    chat_message: string;
+}
+
 // ─── Transparency Types ─────────────────────────────────────────────────────
 
 export type TransparencyTaskStatus = 'pending' | 'in_progress' | 'done';

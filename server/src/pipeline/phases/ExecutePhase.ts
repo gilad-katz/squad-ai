@@ -234,9 +234,32 @@ export class ExecutePhase implements Phase {
                                 );
                             }
 
+                            // Enrich task prompt with PM spec context for bug fixes
+                            let enrichedPrompt = task.prompt;
+                            if (ctx.pmSpec && ctx.pmSpec.requirements.length > 0) {
+                                const pmContext = [
+                                    '\n\nPM AGENT BUG/REQUIREMENT CONTEXT (MANDATORY — these are the specific issues to fix):',
+                                    ...ctx.pmSpec.requirements.map(r =>
+                                        `- [${r.priority}] ${r.id}: ${r.description} (Acceptance: ${r.acceptance})`
+                                    ),
+                                    '',
+                                    'DESIGN SPEC:',
+                                    `- Theme: ${ctx.pmSpec.design.theme}`,
+                                    `- Typography: ${ctx.pmSpec.design.typography}`,
+                                    `- Layout: ${ctx.pmSpec.design.layout}`,
+                                    ...(ctx.pmSpec.design.key_interactions?.length > 0
+                                        ? ['- Interactions:', ...ctx.pmSpec.design.key_interactions.map(i => `  • ${i}`)]
+                                        : []),
+                                    '',
+                                    'You MUST address every requirement listed above that applies to this file.',
+                                    'If a requirement says "remove X", actually remove it from the code. Do NOT just rename it.',
+                                ].join('\n');
+                                enrichedPrompt += pmContext;
+                            }
+
                             const { code } = await this.generateWithImportPreflight({
                                 ctx,
-                                task,
+                                task: { ...task, prompt: enrichedPrompt },
                                 executorHistory,
                                 fileManifest,
                                 existingContent,

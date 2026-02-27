@@ -6,6 +6,7 @@ import { PipelineEngine } from '../pipeline/PipelineEngine';
 import { EventBus } from '../pipeline/EventBus';
 import { convertToGeminiContents, classifyError } from '../pipeline/helpers';
 import { UnderstandPhase } from '../pipeline/phases/UnderstandPhase';
+import { PMAnalyzePhase } from '../pipeline/phases/PMAnalyzePhase';
 import { PlanPhase } from '../pipeline/phases/PlanPhase';
 import { ConfirmPhase } from '../pipeline/phases/ConfirmPhase';
 import { ExecutePhase } from '../pipeline/phases/ExecutePhase';
@@ -57,6 +58,8 @@ router.post('/', validateChat, async (req, res) => {
             completedGitActions: [],
             phaseThoughts: [],
             verificationErrors: null,
+            pmSpec: null,
+            activeAgent: null,
             phaseStartTime: Date.now(),
             pipelineStartTime: Date.now(),
         };
@@ -64,6 +67,7 @@ router.post('/', validateChat, async (req, res) => {
         // Build and run the pipeline
         const pipeline = new PipelineEngine()
             .addPhase(new UnderstandPhase())
+            .addPhase(new PMAnalyzePhase())
             .addPhase(new PlanPhase())
             .addPhase(new ConfirmPhase())
             .addPhase(new ExecutePhase())

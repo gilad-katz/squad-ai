@@ -29,9 +29,12 @@ const INTENT_PATTERNS: Array<{ intent: UserIntent; patterns: RegExp[] }> = [
     {
         intent: 'fix',
         patterns: [
-            /\bfix\b/i, /\bbug\b/i, /\bbroken\b/i, /\berror\b/i, /\bcrash/i,
-            /\bdoesn'?t\s+work/i, /\bnot\s+working/i, /\bissue\b/i,
-            /\bduplicate\b/i, /\boverlap(?:ping)?\b/i, /\bshow(?:s|ing)?\b.*\bduplicate\b/i
+            /\bfix\b/i, /\bbugs?\b/i, /\bbroken\b/i, /\berrors?\b/i, /\bcrash/i,
+            /\bdoesn'?t\s+work/i, /\bnot\s+working/i, /\bissues?\b/i,
+            /\bduplicate\b/i, /\boverlap(?:ping)?\b/i, /\bshow(?:s|ing)?\b.*\bduplicate\b/i,
+            /\bcheck\b.*\b(screenshot|screen|image|visual)/i, /\bvisual\b/i,
+            /\breview\b.*\b(screenshot|screen|image)/i, /\blook\s+at\b/i,
+            /\bdo\s+you\s+see\b/i, /\bwrong\b/i, /\bglitch/i
         ]
     },
     {

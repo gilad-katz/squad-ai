@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Message, PhaseState, FileAction, TransparencyData } from '../types';
+import type { Message, PhaseState, FileAction, TransparencyData, AgentIdentity } from '../types';
 
 const SESSION_STORAGE_KEY = 'squad-ai-session-id';
 
@@ -13,6 +13,7 @@ interface SessionStore {
     sessionTitle: string | null;
     previewUrl: string | null;
     restoringSession: boolean;
+    activeAgent: AgentIdentity | null;
     setPreviewUrl: (url: string | null) => void;
     setSessionTitle: (title: string | null) => void;
     updateSessionTitle: (title: string) => Promise<void>;
@@ -36,6 +37,7 @@ interface SessionStore {
     restoreSession: () => Promise<void>;
     switchSession: (id: string) => Promise<void>;
     deleteSession: (id: string) => Promise<void>;
+    setActiveAgent: (agent: AgentIdentity | null) => void;
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
@@ -48,6 +50,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     sessionTitle: null,
     previewUrl: null,
     restoringSession: false,
+    activeAgent: null,
 
     setPreviewUrl: (url) => set({ previewUrl: url }),
     setSessionTitle: (title) => set({ sessionTitle: title }),
@@ -79,10 +82,12 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
     appendAgentMessageStart: () => {
         const id = crypto.randomUUID();
+        const { activeAgent } = get();
         set(s => ({
             streamActive: true,
             messages: [...s.messages, {
                 id, role: 'assistant', content: '', displayContent: '',
+                agent: activeAgent || undefined,
                 transparency: null, fileActions: [], serverFileActions: [], gitActions: [], phaseThoughts: [], status: 'streaming', timestamp: Date.now(), sessionId: s.sessionId || undefined
             }]
         }));
@@ -262,6 +267,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             sessionId: null,
             sessionTitle: null,
             previewUrl: null,
+            activeAgent: null,
         });
     },
 
@@ -410,4 +416,6 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             throw err;
         }
     },
+
+    setActiveAgent: (agent) => set({ activeAgent: agent }),
 }));

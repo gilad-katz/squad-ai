@@ -49,15 +49,23 @@ export interface GitResultEvent {
 
 // ─── SSE Event Union ─────────────────────────────────────────────────────────
 
+// ─── Agent Identity ──────────────────────────────────────────────────────────
+
+export type AgentIdentity = 'pm' | 'fe';
+
+// ─── SSE Event Union ─────────────────────────────────────────────────────────
+
 export type SSEEvent =
     | { type: 'session'; sessionId: string }
-    | { type: 'phase'; phase: PhaseState; detail?: string; thought?: string; elapsed_ms?: number }
-    | { type: 'delta'; text: string }
+    | { type: 'agent_start'; agent: AgentIdentity; name: string }
+    | { type: 'agent_end'; agent: AgentIdentity }
+    | { type: 'phase'; phase: PhaseState; detail?: string; thought?: string; elapsed_ms?: number; agent?: AgentIdentity }
+    | { type: 'delta'; text: string; agent?: AgentIdentity }
     | { type: 'transparency'; data: TransparencyData }
     | FileActionEvent
     | GitResultEvent
     | { type: 'preview'; url: string }
     | { type: 'metadata'; data: { title?: string } }
-    | { type: 'summary'; text: string }
+    | { type: 'summary'; text: string; agent?: AgentIdentity }
     | { type: 'error'; message: string }
     | { type: 'done'; usage: any; sessionId: string };

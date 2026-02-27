@@ -43,7 +43,10 @@ export interface GitAction {
     error?: string;
 }
 
+export type AgentIdentity = 'pm' | 'fe';
+
 export interface Message {
+    agent?: AgentIdentity;
     id: string;
     role: 'user' | 'assistant';
     content: string;                 // raw (may contain TRANSPARENCY / FILE_ACTIONS blocks)

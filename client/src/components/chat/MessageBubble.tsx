@@ -63,6 +63,22 @@ interface MessageBubbleProps {
     toolingInline?: boolean;
 }
 
+// ─── Agent Identity Chip ─────────────────────────────────────────────────────
+function AgentChip({ agent }: { agent?: 'pm' | 'fe' }) {
+    if (!agent) return null;
+
+    const config = agent === 'pm'
+        ? { icon: '🎯', label: 'PM Agent', bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' }
+        : { icon: '🔧', label: 'FE Agent', bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' };
+
+    return (
+        <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider ${config.bg} ${config.text} border ${config.border} mb-2`}>
+            <span>{config.icon}</span>
+            <span>{config.label}</span>
+        </div>
+    );
+}
+
 export const MessageBubble = React.memo(function MessageBubble({
     message,
     onRetry,
@@ -84,7 +100,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                             {message.attachments.map(att => (
                                 <img
                                     key={att.id}
-                                    src={att.url || `data:${att.mimeType};base64,${att.data}`}
+                                    src={att.data ? `data:${att.mimeType};base64,${att.data}` : att.url}
                                     alt={att.name}
                                     className="max-w-[200px] max-h-[200px] object-contain rounded-lg border border-blue-400 bg-white"
                                 />
@@ -119,6 +135,13 @@ export const MessageBubble = React.memo(function MessageBubble({
                 className={`flex flex-col max-w-[85%] min-w-[220px] bg-white border rounded-2xl rounded-tl-sm shadow-sm overflow-hidden text-left transition-all duration-200 ${canSelectTooling ? 'cursor-pointer hover:shadow-md' : ''} ${isToolingSelected ? 'border-blue-300 ring-2 ring-blue-100' : 'border-gray-200'
                     }`}
             >
+                {/* Agent identity chip */}
+                {message.agent && (
+                    <div className="px-5 pt-3 pb-0">
+                        <AgentChip agent={message.agent} />
+                    </div>
+                )}
+
                 {!toolingInline && (phaseThoughtCards.length > 0 || hasReasoning) && (
                     <div className={`px-5 py-4 bg-blue-50/40 ${message.displayContent ? 'border-b border-gray-100' : 'border-t border-blue-100'}`}>
                         <h4 className="text-[11px] font-bold uppercase tracking-wider text-blue-700 mb-2">

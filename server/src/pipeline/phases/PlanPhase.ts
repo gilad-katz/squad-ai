@@ -72,6 +72,10 @@ export class PlanPhase implements Phase {
         emitPhase(ctx, 'planning', 'Planning execution strategy', buildPhaseThought('planning', ctx));
         ctx.events.emit({ type: 'delta', text: '' }); // Signal stream start
 
+        // Emit FE Agent identity
+        ctx.activeAgent = 'fe';
+        ctx.events.emit({ type: 'agent_start', agent: 'fe', name: 'FE-SENIOR-01' });
+
         // Build workspace-aware system instruction
         ctx.existingFiles = listFiles(ctx.sessionId);
 
@@ -124,6 +128,35 @@ export class PlanPhase implements Phase {
         const thinkingAnalysis = (ctx as any)._thinkingAnalysis;
         if (thinkingAnalysis) {
             systemInstruction += `\n\nPRE-PLANNING ANALYSIS (use this to inform your plan):\n${thinkingAnalysis}`;
+        }
+
+        // Inject PM Agent spec if available — this is AUTHORITATIVE
+        if (ctx.pmSpec) {
+            const pmBlock = [
+                '',
+                '═══════════════════════════════════════════════════════════════',
+                'PM AGENT SPECIFICATION — MANDATORY REQUIREMENTS',
+                '═══════════════════════════════════════════════════════════════',
+                '',
+                'The PM Agent (PM-AGENT-01) has already analyzed the user\'s request.',
+                'You MUST follow these instructions:',
+                '',
+                '1. Every requirement below MUST map to at least one task in your plan.',
+                '2. The PM\'s design decisions (colors, fonts, layout, interactions) are AUTHORITATIVE.',
+                '   Do NOT override them with your own design choices. Use the PM\'s exact hex values,',
+                '   font families, and layout dimensions.',
+                '3. Your `design_decisions` field should ECHO the PM\'s decisions, not replace them.',
+                '4. If the PM identified specific bugs to fix, each bug MUST have a dedicated',
+                '   `edit_file` task that addresses it. Do NOT skip any bug.',
+                '5. Your opening chat task must reference the PM\'s analysis and confirm you are',
+                '   implementing their specification.',
+                '',
+                'PM SPECIFICATION:',
+                JSON.stringify(ctx.pmSpec, null, 2),
+                '',
+                '═══════════════════════════════════════════════════════════════',
+            ].join('\n');
+            systemInstruction += pmBlock;
         }
 
         // Convert messages for Gemini API format

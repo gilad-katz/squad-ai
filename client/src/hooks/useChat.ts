@@ -88,18 +88,20 @@ export function useChat() {
 
         // sessionID is already generated above
 
+        let activeAgentMsgId = agentMsgId;
+
         await consumeStream(
             apiMessages,
             sessionId,
             {
                 // onDelta — conversational text from the orchestrator chat tasks
                 onDelta: (delta) => {
-                    useSessionStore.getState().appendAgentDelta(agentMsgId, delta);
-                    useSessionStore.getState().appendPhaseThoughtDelta(agentMsgId, delta, useSessionStore.getState().phase);
+                    useSessionStore.getState().appendAgentDelta(activeAgentMsgId, delta);
+                    useSessionStore.getState().appendPhaseThoughtDelta(activeAgentMsgId, delta, useSessionStore.getState().phase);
                 },
                 // onDone — finalize
                 onDone: (usage, returnedSessionId) => {
-                    useSessionStore.getState().finaliseAgentMessage(agentMsgId);
+                    useSessionStore.getState().finaliseAgentMessage(activeAgentMsgId);
 
                     if (returnedSessionId) {
                         useSessionStore.getState().setSessionId(returnedSessionId);
@@ -115,11 +117,11 @@ export function useChat() {
                 },
                 // onError
                 onError: (msg) => {
-                    useSessionStore.getState().setAgentError(agentMsgId, msg);
+                    useSessionStore.getState().setAgentError(activeAgentMsgId, msg);
                 },
                 // onGitResult
                 onGitResult: (index, output, error, action, command) => {
-                    useSessionStore.getState().updateGitActionResult(agentMsgId, index, output, error, action, command);
+                    useSessionStore.getState().updateGitActionResult(activeAgentMsgId, index, output, error, action, command);
                 },
                 // onSessionId
                 onSessionId: (sid) => {
@@ -127,16 +129,16 @@ export function useChat() {
                 },
                 // onFileAction — discrete file events from the orchestrator dispatcher
                 onFileAction: (action) => {
-                    useSessionStore.getState().addServerFileAction(agentMsgId, action);
+                    useSessionStore.getState().addServerFileAction(activeAgentMsgId, action);
                 },
                 // onPhase — phase transitions from the backend orchestrator
                 onPhase: (phase, detail, thought) => {
                     useSessionStore.getState().setPhase(phase, detail);
-                    useSessionStore.getState().addPhaseThought(agentMsgId, phase, detail, thought);
+                    useSessionStore.getState().addPhaseThought(activeAgentMsgId, phase, detail, thought);
                 },
                 // onTransparency — reasoning and task breakdown from the orchestrator
                 onTransparency: (data) => {
-                    useSessionStore.getState().setTransparency(agentMsgId, data);
+                    useSessionStore.getState().setTransparency(activeAgentMsgId, data);
                 },
                 // onPreview — dev server URL
                 onPreview: (url) => {
@@ -150,7 +152,30 @@ export function useChat() {
                 },
                 // onSummary
                 onSummary: (text) => {
-                    useSessionStore.getState().setSummary(agentMsgId, text);
+                    useSessionStore.getState().setSummary(activeAgentMsgId, text);
+                },
+                // onAgentStart — new agent turn, create a new message bubble
+                onAgentStart: (agent, _name) => {
+                    useSessionStore.getState().setActiveAgent(agent);
+
+                    // If the initial message already has content for a different agent,
+                    // finalize it and start a fresh one
+                    const current = useSessionStore.getState().messages.find(m => m.id === activeAgentMsgId);
+                    if (current && (current.content || current.serverFileActions?.length)) {
+                        useSessionStore.getState().finaliseAgentMessage(activeAgentMsgId);
+                        activeAgentMsgId = useSessionStore.getState().appendAgentMessageStart();
+                    } else if (current) {
+                        // First agent — just stamp the existing empty message
+                        useSessionStore.setState(s => ({
+                            messages: s.messages.map(m =>
+                                m.id === activeAgentMsgId ? { ...m, agent } : m
+                            )
+                        }));
+                    }
+                },
+                // onAgentEnd — close the current agent's message
+                onAgentEnd: (_agent) => {
+                    useSessionStore.getState().setActiveAgent(null);
                 }
             }
         );

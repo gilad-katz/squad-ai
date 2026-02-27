@@ -1,4 +1,4 @@
-import type { Message, FileAction, PhaseState, TransparencyData } from '../types';
+import type { Message, FileAction, PhaseState, TransparencyData, AgentIdentity } from '../types';
 
 // ─── Stream Handler Map ──────────────────────────────────────────────────────
 // Replaces the previous 12 positional callback parameters with a single
@@ -16,6 +16,8 @@ export interface StreamHandlers {
     onPreview?: (url: string) => void;
     onMetadata?: (data: { title?: string }) => void;
     onSummary?: (text: string) => void;
+    onAgentStart?: (agent: AgentIdentity, name: string) => void;
+    onAgentEnd?: (agent: AgentIdentity) => void;
 }
 
 // ─── Stream Consumer ─────────────────────────────────────────────────────────
@@ -91,6 +93,12 @@ export async function consumeStream(
                             break;
                         case 'summary':
                             handlers.onSummary?.(evt.text);
+                            break;
+                        case 'agent_start':
+                            handlers.onAgentStart?.(evt.agent, evt.name);
+                            break;
+                        case 'agent_end':
+                            handlers.onAgentEnd?.(evt.agent);
                             break;
                         default:
                             // Unknown event type — ignore gracefully
